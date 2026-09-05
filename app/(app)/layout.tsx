@@ -1,19 +1,12 @@
 import Link from "next/link";
-import {
-  CalendarDays,
-  CheckCircle2,
-  KanbanSquare,
-  LayoutDashboard,
-  Plus,
-  Settings,
-} from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { exigirSesion, puedeAprobar } from "@/lib/auth/sesion";
 import { contarPendientesDeRevision } from "@/lib/workflow/apply";
 import { SelectorDeMarca } from "@/components/shell/selector-de-marca";
 import { MenuUsuario } from "@/components/shell/menu-usuario";
-import { NavPrincipal } from "@/components/shell/nav-principal";
+import { NavMovil, NavPrincipal } from "@/components/shell/nav-principal";
+import type { EnlaceNav } from "@/components/shell/iconos-nav";
 import { PantallaConfiguracion } from "@/components/pantalla-configuracion";
 import { variablesFaltantes } from "@/lib/auth/configuracion";
 
@@ -35,22 +28,30 @@ export default async function LayoutApp({
     ? await contarPendientesDeRevision(sesion.marcaActiva.id)
     : 0;
 
-  const enlaces = [
-    { href: "/", etiqueta: "Inicio", icono: LayoutDashboard },
-    { href: "/tablero", etiqueta: "Tablero", icono: KanbanSquare },
-    { href: "/calendario", etiqueta: "Calendario", icono: CalendarDays },
+  // Los iconos van como clave, no como componente: las funciones no cruzan la
+  // frontera entre Server y Client Components.
+  const enlaces: EnlaceNav[] = [
+    { href: "/", etiqueta: "Inicio", icono: "inicio" },
+    { href: "/tablero", etiqueta: "Tablero", icono: "tablero" },
+    { href: "/calendario", etiqueta: "Calendario", icono: "calendario" },
     ...(aprobador
       ? [
           {
             href: "/aprobaciones",
             etiqueta: "Aprobaciones",
-            icono: CheckCircle2,
+            icono: "aprobaciones" as const,
             insignia: pendientes,
           },
         ]
       : []),
     ...(sesion.usuario.rol === "ADMIN"
-      ? [{ href: "/admin/cuentas", etiqueta: "Administracion", icono: Settings }]
+      ? [
+          {
+            href: "/admin/cuentas",
+            etiqueta: "Administracion",
+            icono: "administracion" as const,
+          },
+        ]
       : []),
   ];
 
@@ -96,25 +97,7 @@ export default async function LayoutApp({
         <main className="min-w-0 flex-1 p-4 md:p-6">{children}</main>
       </div>
 
-      <nav className="sticky bottom-0 flex border-t bg-background md:hidden">
-        {enlaces.map((e) => (
-          <Link
-            key={e.href}
-            href={e.href}
-            className="flex flex-1 flex-col items-center gap-1 py-2 text-[11px] text-muted-foreground"
-          >
-            <e.icono className="size-5" />
-            <span className="flex items-center gap-1">
-              {e.etiqueta}
-              {"insignia" in e && e.insignia ? (
-                <Badge variant="secondary" className="h-4 px-1 text-[10px]">
-                  {e.insignia}
-                </Badge>
-              ) : null}
-            </span>
-          </Link>
-        ))}
-      </nav>
+      <NavMovil enlaces={enlaces} />
     </div>
   );
 }
