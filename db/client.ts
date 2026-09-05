@@ -2,13 +2,15 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
-function urlDeBase(): string {
-  const url = process.env.DATABASE_URL;
-  if (!url) {
-    throw new Error("Falta DATABASE_URL en el entorno.");
-  }
-  return url;
-}
+/**
+ * Conexion a Postgres.
+ *
+ * La conexion se abre en el primer uso, no al importar el modulo. Importa
+ * porque `next build` evalua los modulos de cada ruta para recolectar sus
+ * datos: si la conexion se creara al importar, el build necesitaria una base
+ * viva y las variables de entorno cargadas, cosa que en un CI (o en Vercel
+ * antes de configurar el proyecto) no pasa.
+ */
 
 /**
  * Una sola conexion por proceso. En dev, Next recarga los modulos en cada
@@ -19,17 +21,71 @@ const cache = globalThis as unknown as {
   __sqlWitko?: ReturnType<typeof postgres>;
 };
 
-const sql =
-  cache.__sqlWitko ??
-  postgres(urlDeBase(), {
+function crearConexion(): ReturnType<typeof postgres> {
+  const url = process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      "Falta DATABASE_URL. En local va en .env.local y .env; en Vercel, en " +
+        "Settings > Environment Variables (usando la cadena del transaction pooler).",
+    );
+  }
+
+  const conexion = postgres(url, {
     max: process.env.WORKER_ID ? 5 : 10,
-    prepare: false, // el pooler de Supabase en modo transaction no soporta prepared statements
+    // El pooler de Supabase en modo transaction no admite prepared statements.
+    prepare: false,
   });
 
-if (process.env.NODE_ENV !== "production") {
-  cache.__sqlWitko = sql;
+  if (process.env.NODE_ENV !== "production") {
+    cache.__sqlWitko = conexion;
+  }
+
+  return conexion;
 }
 
-export const db = drizzle(sql, { schema });
-export { sql };
-export type Db = typeof db;
+let conexion: ReturnType<typeof postgres> | undefined;
+
+function obtenerConexion(): ReturnType<typeof postgres> {
+  conexion ??= cache.__sqlWitko ?? crearConexion();
+  return conexion;
+}
+
+/**
+ * `sql` se usa como plantilla etiquetada (sql`select ...`) y tambien expone
+ * metodos (`sql.end()`, `sql.unsafe()`), asi que el proxy intercepta tanto la
+ * llamada como el acceso a propiedades.
+ */
+export const sql = new Proxy(function () {} as unknown as ReturnType<
+  typeof postgres
+>, {
+  apply(_objetivo, _this, argumentos) {
+    return (obtenerConexion() as unknown as (...args: unknown[]) => unknown)(
+      ...argumentos,
+    );
+  },
+  get(_objetivo, propiedad) {
+    const actual = obtenerConexion() as unknown as Record<string, unknown>;
+    const valor = actual[propiedad as string];
+    return typeof valor === "function" ? valor.bind(actual) : valor;
+  },
+});
+
+let instanciaDb: ReturnType<typeof drizzle<typeof schema>> | undefined;
+
+function obtenerDb(): ReturnType<typeof drizzle<typeof schema>> {
+  instanciaDb ??= drizzle(obtenerConexion(), { schema });
+  return instanciaDb;
+}
+
+export const db = new Proxy(
+  {} as ReturnType<typeof drizzle<typeof schema>>,
+  {
+    get(_objetivo, propiedad) {
+      const actual = obtenerDb() as unknown as Record<string, unknown>;
+      const valor = actual[propiedad as string];
+      return typeof valor === "function" ? valor.bind(actual) : valor;
+    },
+  },
+);
+
+export type Db = ReturnType<typeof drizzle<typeof schema>>;
