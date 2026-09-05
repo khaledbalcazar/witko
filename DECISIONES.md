@@ -211,3 +211,47 @@ herramientas a mano. Con Trello embebido eso no se puede.
 **Detalle.** El orden de columnas y tarjetas es `double precision`, no entero:
 al arrastrar se calcula el punto medio entre vecinos y se actualiza una sola
 fila, en vez de renumerar la columna entera.
+
+---
+
+## 18. Alta de usuarios con contraseña temporal
+
+**Decisión.** El admin crea el usuario desde `/admin/usuarios` y la app genera
+una contraseña aleatoria que se muestra una sola vez, en pantalla.
+
+**Por qué.** El pedido es que el admin cree e invite y que la gente entre con
+correo y contraseña. La invitación por email de Supabase necesita un dominio de
+envío verificado, que todavía no existe (misma razón que el Notifier de
+consola). Mostrarla una vez y pedir que se cambie es lo que se puede sostener
+hoy sin bloquear el alta del equipo.
+
+**Cuándo cambia.** En Fase 1, con Resend andando, se reemplaza por un enlace de
+invitación por correo y la contraseña temporal desaparece.
+
+---
+
+## 19. La autorización se aplica en el servidor, no en RLS
+
+**Decisión.** La app y el worker se conectan con un rol que bypassa RLS. Quién
+puede hacer qué lo decide la máquina de estados y las server actions, que
+siempre verifican que el recurso pertenezca a la marca activa del usuario. Las
+políticas de RLS existen igual, como segunda red.
+
+**Por qué.** Repartir la autorización entre RLS y el código lleva a que nadie
+sepa dónde mirar cuando algo se permite o se niega de más. Con una sola fuente
+—el código— las reglas están testeadas y son legibles. RLS queda cubriendo el
+caso de que algo llegue a la base con el token de un usuario, y protege los
+tokens de `social_accounts`, que no tienen ninguna política de lectura.
+
+---
+
+## 20. shadcn/ui sobre Base UI
+
+**Decisión.** La versión actual de shadcn/ui genera componentes sobre Base UI,
+no sobre Radix. Se usan sus convenciones: `render={<Link />}` en lugar de
+`asChild`, y los `onValueChange` de `Select` pueden devolver `null`.
+
+**Por qué.** Es lo que instala el CLI hoy. Forzar la variante de Radix
+significaría quedarse en una versión vieja del generador. Los logos de marca
+también salieron de `lucide-react` en su versión 1, así que los íconos de
+Instagram, Facebook y TikTok van dibujados en `components/iconos-redes.tsx`.
