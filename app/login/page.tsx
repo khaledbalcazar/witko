@@ -1,3 +1,5 @@
+import { PantallaConfiguracion } from "@/components/pantalla-configuracion";
+import { variablesFaltantes } from "@/lib/auth/configuracion";
 import { FormularioLogin } from "./formulario";
 
 export const metadata = { title: "Ingresar" };
@@ -7,6 +9,13 @@ export default async function PaginaLogin({
 }: {
   searchParams: Promise<{ volver?: string }>;
 }) {
+  // El login es la otra puerta de entrada: si no hay configuracion, tampoco
+  // tiene sentido mostrar un formulario que no va a poder autenticar a nadie.
+  const faltantes = variablesFaltantes();
+  if (faltantes.length > 0) {
+    return <PantallaConfiguracion faltantes={faltantes} />;
+  }
+
   const { volver } = await searchParams;
 
   return (

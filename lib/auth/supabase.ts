@@ -19,12 +19,20 @@ function variables(): { url: string; anon: string } {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anon) {
-    throw new Error(
-      "Faltan NEXT_PUBLIC_SUPABASE_URL o NEXT_PUBLIC_SUPABASE_ANON_KEY.",
-    );
+    throw new Error(FALTA_CONFIGURACION);
   }
   return { url, anon };
 }
+
+/**
+ * El error mas probable en el primer arranque. Dice que hacer, porque
+ * "faltan variables" no le sirve a nadie que recien clona el proyecto.
+ */
+export const FALTA_CONFIGURACION =
+  "Falta configurar Supabase. Abri .env.local y completa NEXT_PUBLIC_SUPABASE_URL, " +
+  "NEXT_PUBLIC_SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY y DATABASE_URL con los datos " +
+  "de tu proyecto de Supabase (Project Settings > API y > Database). Los pasos estan en " +
+  "SETUP.md, seccion 2.";
 
 export async function supabaseServidor() {
   const { url, anon } = variables();

@@ -14,12 +14,21 @@ import { contarPendientesDeRevision } from "@/lib/workflow/apply";
 import { SelectorDeMarca } from "@/components/shell/selector-de-marca";
 import { MenuUsuario } from "@/components/shell/menu-usuario";
 import { NavPrincipal } from "@/components/shell/nav-principal";
+import { PantallaConfiguracion } from "@/components/pantalla-configuracion";
+import { variablesFaltantes } from "@/lib/auth/configuracion";
 
 export default async function LayoutApp({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Antes de tocar la sesion: sin configuracion no hay nada que consultar, y
+  // un stack trace de Supabase no le dice a nadie que le falta un .env.
+  const faltantes = variablesFaltantes();
+  if (faltantes.length > 0) {
+    return <PantallaConfiguracion faltantes={faltantes} />;
+  }
+
   const sesion = await exigirSesion();
   const aprobador = puedeAprobar(sesion);
   const pendientes = aprobador
