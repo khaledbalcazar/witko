@@ -21,12 +21,30 @@ const cache = globalThis as unknown as {
   __sqlWitko?: ReturnType<typeof postgres>;
 };
 
+/** Vercel, y cualquier otro entorno de funciones efimeras. */
+function esEntornoSinServidor(): boolean {
+  return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
+}
+
 function crearConexion(): ReturnType<typeof postgres> {
   const url = process.env.DATABASE_URL;
   if (!url) {
     throw new Error(
       "Falta DATABASE_URL. En local va en .env.local y .env; en Vercel, en " +
         "Settings > Environment Variables (usando la cadena del transaction pooler).",
+    );
+  }
+
+  // La conexion directa de Supabase (db.<proyecto>.supabase.co) resuelve solo
+  // por IPv6, que no esta disponible en la mayoria de los entornos sin
+  // servidor: alli falla con un ENOTFOUND que no dice nada. Se detecta antes
+  // de intentar conectar.
+  if (esEntornoSinServidor() && /(?:^|@)db\.[a-z0-9]+\.supabase\.co/.test(url)) {
+    throw new Error(
+      "DATABASE_URL apunta a la conexion directa de Supabase, que no funciona " +
+        "en un entorno sin servidor. Usa la cadena del transaction pooler " +
+        "(Connect > Transaction pooler, host ...pooler.supabase.com puerto 6543) " +
+        "y volve a desplegar.",
     );
   }
 
