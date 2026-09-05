@@ -1,10 +1,11 @@
 import "dotenv/config";
 import { defineConfig } from "drizzle-kit";
 
-const url = process.env.DATABASE_URL;
-if (!url) {
-  throw new Error("Falta DATABASE_URL. Copia .env.example a .env.local.");
-}
+// `drizzle-kit generate` no necesita una base viva; solo `push` y `studio` la
+// usan de verdad. El placeholder deja generar migraciones sin entorno cargado.
+const url =
+  process.env.DATABASE_URL ??
+  "postgresql://postgres:postgres@localhost:5432/postgres";
 
 export default defineConfig({
   schema: "./db/schema.ts",
