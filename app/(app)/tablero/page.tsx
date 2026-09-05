@@ -29,6 +29,7 @@ export default async function PaginaTablero() {
       boardId={datos.tablero.id}
       nombre={datos.tablero.nombre}
       zona={sesion.marcaActiva.timezone}
+      usuarioId={sesion.usuario.id}
       columnas={datos.columnas.map((c) => ({
         id: c.id,
         nombre: c.nombre,
@@ -54,6 +55,7 @@ export default async function PaginaTablero() {
         descripcion: t.descripcion,
         prioridad: t.prioridad,
         dueAt: t.dueAt?.toISOString() ?? null,
+        completadoAt: t.completadoAt?.toISOString() ?? null,
         asignadoId: t.asignadoId,
         asignadoNombre: t.asignado?.nombre ?? null,
         postId: t.postId,
@@ -64,6 +66,13 @@ export default async function PaginaTablero() {
           id: i.id,
           texto: i.texto,
           hecho: i.hecho,
+        })),
+        comentarios: t.comentarios.map((c) => ({
+          id: c.id,
+          cuerpo: c.cuerpo,
+          autorId: c.autorId,
+          autorNombre: c.autorNombre,
+          createdAt: c.createdAt.toISOString(),
         })),
       }))}
     />

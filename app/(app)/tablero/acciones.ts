@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db/client";
@@ -9,6 +8,7 @@ import {
   boardColumns,
   boards,
   cardChecklistItems,
+  cardComments,
   cardLabelLinks,
   cardLabels,
 } from "@/db/schema";
@@ -22,12 +22,15 @@ import { ordenEntre } from "@/lib/queries/tablero";
  * El tablero es del equipo: cualquier miembro de la marca puede crear, mover y
  * editar tarjetas. No hay flujo de aprobacion aca; el que importa es el de las
  * publicaciones.
+ *
+ * Las creaciones aceptan un `id` generado en el navegador. Asi la interfaz
+ * puede pintar la tarjeta nueva antes de que el servidor conteste, sin tener
+ * que reconciliar despues un id provisorio con el definitivo.
  */
 
 export interface Respuesta {
   ok: boolean;
   mensaje?: string;
-  id?: string;
 }
 
 /** Confirma que el tablero pertenece a la marca activa del usuario. */
@@ -50,12 +53,15 @@ async function tarjetaDeMiMarca(cardId: string, brandId: string) {
   return filas[0]?.tarjeta ?? null;
 }
 
+const idSchema = z.string().uuid();
+
 /* ------------------------------------------------------------------ */
 /* Columnas                                                            */
 /* ------------------------------------------------------------------ */
 
 const columnaSchema = z.object({
-  boardId: z.string().uuid(),
+  id: idSchema,
+  boardId: idSchema,
   nombre: z.string().trim().min(1, "Ponele un nombre.").max(60),
   color: z.string().max(20).nullable().default(null),
 });
@@ -76,18 +82,15 @@ export async function crearColumna(datos: unknown): Promise<Respuesta> {
     .from(boardColumns)
     .where(eq(boardColumns.boardId, parseo.data.boardId));
 
-  const [creada] = await db
-    .insert(boardColumns)
-    .values({
-      boardId: parseo.data.boardId,
-      nombre: parseo.data.nombre,
-      color: parseo.data.color,
-      orden: (maximo ?? 0) + 1000,
-    })
-    .returning();
+  await db.insert(boardColumns).values({
+    id: parseo.data.id,
+    boardId: parseo.data.boardId,
+    nombre: parseo.data.nombre,
+    color: parseo.data.color,
+    orden: (maximo ?? 0) + 1000,
+  });
 
-  revalidatePath("/tablero");
-  return { ok: true, id: creada.id };
+  return { ok: true };
 }
 
 export async function renombrarColumna(
@@ -99,7 +102,7 @@ export async function renombrarColumna(
   if (!limpio) return { ok: false, mensaje: "El nombre no puede quedar vacio." };
 
   const filas = await db
-    .select({ boardId: boardColumns.boardId })
+    .select({ id: boardColumns.id })
     .from(boardColumns)
     .innerJoin(boards, eq(boards.id, boardColumns.boardId))
     .where(
@@ -116,7 +119,6 @@ export async function renombrarColumna(
     .set({ nombre: limpio })
     .where(eq(boardColumns.id, columnaId));
 
-  revalidatePath("/tablero");
   return { ok: true };
 }
 
@@ -155,7 +157,6 @@ export async function eliminarColumna(columnaId: string): Promise<Respuesta> {
   }
 
   await db.delete(boardColumns).where(eq(boardColumns.id, columnaId));
-  revalidatePath("/tablero");
   return { ok: true };
 }
 
@@ -164,9 +165,11 @@ export async function eliminarColumna(columnaId: string): Promise<Respuesta> {
 /* ------------------------------------------------------------------ */
 
 const tarjetaSchema = z.object({
-  boardId: z.string().uuid(),
-  columnId: z.string().uuid(),
+  id: idSchema,
+  boardId: idSchema,
+  columnId: idSchema,
   titulo: z.string().trim().min(1, "Ponele un titulo.").max(200),
+  orden: z.number(),
 });
 
 export async function crearTarjeta(datos: unknown): Promise<Respuesta> {
@@ -180,34 +183,26 @@ export async function crearTarjeta(datos: unknown): Promise<Respuesta> {
     return { ok: false, mensaje: "Ese tablero no es de esta marca." };
   }
 
-  const [{ maximo }] = await db
-    .select({ maximo: sql<number | null>`max(${boardCards.orden})` })
-    .from(boardCards)
-    .where(eq(boardCards.columnId, parseo.data.columnId));
+  await db.insert(boardCards).values({
+    id: parseo.data.id,
+    boardId: parseo.data.boardId,
+    columnId: parseo.data.columnId,
+    titulo: parseo.data.titulo,
+    autorId: sesion.usuario.id,
+    orden: parseo.data.orden,
+  });
 
-  const [creada] = await db
-    .insert(boardCards)
-    .values({
-      boardId: parseo.data.boardId,
-      columnId: parseo.data.columnId,
-      titulo: parseo.data.titulo,
-      autorId: sesion.usuario.id,
-      orden: (maximo ?? 0) + 1000,
-    })
-    .returning();
-
-  revalidatePath("/tablero");
-  return { ok: true, id: creada.id };
+  return { ok: true };
 }
 
 const edicionSchema = z.object({
   titulo: z.string().trim().min(1).max(200).optional(),
   descripcion: z.string().max(4000).nullable().optional(),
-  asignadoId: z.string().uuid().nullable().optional(),
+  asignadoId: idSchema.nullable().optional(),
   prioridad: z.enum(["BAJA", "MEDIA", "ALTA", "URGENTE"]).optional(),
   dueAt: z.coerce.date().nullable().optional(),
-  postId: z.string().uuid().nullable().optional(),
-  etiquetaIds: z.array(z.string().uuid()).optional(),
+  postId: idSchema.nullable().optional(),
+  etiquetaIds: z.array(idSchema).optional(),
 });
 
 export async function editarTarjeta(
@@ -251,7 +246,23 @@ export async function editarTarjeta(
     });
   });
 
-  revalidatePath("/tablero");
+  return { ok: true };
+}
+
+/** Marca la tarea como hecha o la devuelve a pendiente. */
+export async function completarTarjeta(
+  cardId: string,
+  hecha: boolean,
+): Promise<Respuesta> {
+  const sesion = await exigirSesion();
+  const tarjeta = await tarjetaDeMiMarca(cardId, sesion.marcaActiva.id);
+  if (!tarjeta) return { ok: false, mensaje: "No encontramos esa tarjeta." };
+
+  await db
+    .update(boardCards)
+    .set({ completadoAt: hecha ? new Date() : null, updatedAt: new Date() })
+    .where(eq(boardCards.id, cardId));
+
   return { ok: true };
 }
 
@@ -259,7 +270,6 @@ export async function editarTarjeta(
 export async function moverTarjeta(params: {
   cardId: string;
   columnId: string;
-  /** Ids de las tarjetas vecinas en el destino, en orden. */
   anteriorId: string | null;
   siguienteId: string | null;
 }): Promise<Respuesta> {
@@ -273,10 +283,8 @@ export async function moverTarjeta(params: {
     .where(eq(boardCards.columnId, params.columnId))
     .orderBy(asc(boardCards.orden));
 
-  const anterior =
-    vecinas.find((v) => v.id === params.anteriorId)?.orden ?? null;
-  const siguiente =
-    vecinas.find((v) => v.id === params.siguienteId)?.orden ?? null;
+  const anterior = vecinas.find((v) => v.id === params.anteriorId)?.orden ?? null;
+  const siguiente = vecinas.find((v) => v.id === params.siguienteId)?.orden ?? null;
 
   await db
     .update(boardCards)
@@ -287,7 +295,6 @@ export async function moverTarjeta(params: {
     })
     .where(eq(boardCards.id, params.cardId));
 
-  revalidatePath("/tablero");
   return { ok: true };
 }
 
@@ -301,37 +308,41 @@ export async function archivarTarjeta(cardId: string): Promise<Respuesta> {
     .set({ archivadoAt: new Date() })
     .where(eq(boardCards.id, cardId));
 
-  revalidatePath("/tablero");
   return { ok: true };
 }
 
 /* ------------------------------------------------------------------ */
-/* Checklist y etiquetas                                               */
+/* Checklist                                                           */
 /* ------------------------------------------------------------------ */
 
-export async function agregarItemChecklist(
-  cardId: string,
-  texto: string,
-): Promise<Respuesta> {
-  const sesion = await exigirSesion();
-  const tarjeta = await tarjetaDeMiMarca(cardId, sesion.marcaActiva.id);
-  if (!tarjeta) return { ok: false, mensaje: "No encontramos esa tarjeta." };
+const itemSchema = z.object({
+  id: idSchema,
+  cardId: idSchema,
+  texto: z.string().trim().min(1, "Escribi algo.").max(500),
+});
 
-  const limpio = texto.trim();
-  if (!limpio) return { ok: false, mensaje: "Escribi algo." };
+export async function agregarItemChecklist(datos: unknown): Promise<Respuesta> {
+  const sesion = await exigirSesion();
+  const parseo = itemSchema.safeParse(datos);
+  if (!parseo.success) {
+    return { ok: false, mensaje: parseo.error.issues[0].message };
+  }
+
+  const tarjeta = await tarjetaDeMiMarca(parseo.data.cardId, sesion.marcaActiva.id);
+  if (!tarjeta) return { ok: false, mensaje: "No encontramos esa tarjeta." };
 
   const [{ maximo }] = await db
     .select({ maximo: sql<number | null>`max(${cardChecklistItems.orden})` })
     .from(cardChecklistItems)
-    .where(eq(cardChecklistItems.cardId, cardId));
+    .where(eq(cardChecklistItems.cardId, parseo.data.cardId));
 
   await db.insert(cardChecklistItems).values({
-    cardId,
-    texto: limpio,
+    id: parseo.data.id,
+    cardId: parseo.data.cardId,
+    texto: parseo.data.texto,
     orden: (maximo ?? 0) + 1000,
   });
 
-  revalidatePath("/tablero");
   return { ok: true };
 }
 
@@ -361,33 +372,175 @@ export async function marcarItemChecklist(
     .set({ hecho })
     .where(eq(cardChecklistItems.id, itemId));
 
-  revalidatePath("/tablero");
   return { ok: true };
 }
 
-export async function crearEtiqueta(
-  boardId: string,
+export async function eliminarItemChecklist(itemId: string): Promise<Respuesta> {
+  const sesion = await exigirSesion();
+
+  const filas = await db
+    .select({ id: cardChecklistItems.id })
+    .from(cardChecklistItems)
+    .innerJoin(boardCards, eq(boardCards.id, cardChecklistItems.cardId))
+    .innerJoin(boards, eq(boards.id, boardCards.boardId))
+    .where(
+      and(
+        eq(cardChecklistItems.id, itemId),
+        eq(boards.brandId, sesion.marcaActiva.id),
+      ),
+    )
+    .limit(1);
+
+  if (filas.length === 0) return { ok: false, mensaje: "No encontramos el item." };
+
+  await db.delete(cardChecklistItems).where(eq(cardChecklistItems.id, itemId));
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Comentarios                                                         */
+/* ------------------------------------------------------------------ */
+
+const comentarioSchema = z.object({
+  id: idSchema,
+  cardId: idSchema,
+  cuerpo: z.string().trim().min(1, "Escribi algo.").max(4000),
+});
+
+export async function comentarTarjeta(datos: unknown): Promise<Respuesta> {
+  const sesion = await exigirSesion();
+  const parseo = comentarioSchema.safeParse(datos);
+  if (!parseo.success) {
+    return { ok: false, mensaje: parseo.error.issues[0].message };
+  }
+
+  const tarjeta = await tarjetaDeMiMarca(parseo.data.cardId, sesion.marcaActiva.id);
+  if (!tarjeta) return { ok: false, mensaje: "No encontramos esa tarjeta." };
+
+  await db.insert(cardComments).values({
+    id: parseo.data.id,
+    cardId: parseo.data.cardId,
+    autorId: sesion.usuario.id,
+    cuerpo: parseo.data.cuerpo,
+  });
+
+  return { ok: true };
+}
+
+export async function eliminarComentario(comentarioId: string): Promise<Respuesta> {
+  const sesion = await exigirSesion();
+
+  const filas = await db
+    .select({ autorId: cardComments.autorId })
+    .from(cardComments)
+    .innerJoin(boardCards, eq(boardCards.id, cardComments.cardId))
+    .innerJoin(boards, eq(boards.id, boardCards.boardId))
+    .where(
+      and(
+        eq(cardComments.id, comentarioId),
+        eq(boards.brandId, sesion.marcaActiva.id),
+      ),
+    )
+    .limit(1);
+
+  const comentario = filas[0];
+  if (!comentario) return { ok: false, mensaje: "No encontramos el comentario." };
+
+  // Cada uno borra lo suyo; el admin puede borrar cualquiera.
+  if (
+    comentario.autorId !== sesion.usuario.id &&
+    sesion.usuario.rol !== "ADMIN"
+  ) {
+    return { ok: false, mensaje: "Solo podes borrar tus propios comentarios." };
+  }
+
+  await db.delete(cardComments).where(eq(cardComments.id, comentarioId));
+  return { ok: true };
+}
+
+/* ------------------------------------------------------------------ */
+/* Etiquetas                                                           */
+/* ------------------------------------------------------------------ */
+
+const etiquetaSchema = z.object({
+  id: idSchema,
+  boardId: idSchema,
+  nombre: z.string().trim().min(1, "Ponele un nombre.").max(40),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/, "El color tiene que ser hexadecimal."),
+});
+
+export async function crearEtiqueta(datos: unknown): Promise<Respuesta> {
+  const sesion = await exigirSesion();
+  const parseo = etiquetaSchema.safeParse(datos);
+  if (!parseo.success) {
+    return { ok: false, mensaje: parseo.error.issues[0].message };
+  }
+
+  if (!(await tableroDeMiMarca(parseo.data.boardId, sesion.marcaActiva.id))) {
+    return { ok: false, mensaje: "Ese tablero no es de esta marca." };
+  }
+
+  const creada = await db
+    .insert(cardLabels)
+    .values({
+      id: parseo.data.id,
+      boardId: parseo.data.boardId,
+      nombre: parseo.data.nombre,
+      color: parseo.data.color,
+    })
+    .onConflictDoNothing()
+    .returning();
+
+  if (creada.length === 0) {
+    return { ok: false, mensaje: "Ya existe una etiqueta con ese nombre." };
+  }
+
+  return { ok: true };
+}
+
+export async function editarEtiqueta(
+  etiquetaId: string,
   nombre: string,
   color: string,
 ): Promise<Respuesta> {
   const sesion = await exigirSesion();
-  if (!(await tableroDeMiMarca(boardId, sesion.marcaActiva.id))) {
-    return { ok: false, mensaje: "Ese tablero no es de esta marca." };
-  }
+
+  const filas = await db
+    .select({ id: cardLabels.id })
+    .from(cardLabels)
+    .innerJoin(boards, eq(boards.id, cardLabels.boardId))
+    .where(
+      and(eq(cardLabels.id, etiquetaId), eq(boards.brandId, sesion.marcaActiva.id)),
+    )
+    .limit(1);
+
+  if (filas.length === 0) return { ok: false, mensaje: "No encontramos la etiqueta." };
 
   const limpio = nombre.trim();
   if (!limpio) return { ok: false, mensaje: "Ponele un nombre." };
 
-  const [creada] = await db
-    .insert(cardLabels)
-    .values({ boardId, nombre: limpio, color })
-    .onConflictDoNothing()
-    .returning();
+  await db
+    .update(cardLabels)
+    .set({ nombre: limpio, color })
+    .where(eq(cardLabels.id, etiquetaId));
 
-  if (!creada) {
-    return { ok: false, mensaje: "Ya existe una etiqueta con ese nombre." };
-  }
+  return { ok: true };
+}
 
-  revalidatePath("/tablero");
-  return { ok: true, id: creada.id };
+export async function eliminarEtiqueta(etiquetaId: string): Promise<Respuesta> {
+  const sesion = await exigirSesion();
+
+  const filas = await db
+    .select({ id: cardLabels.id })
+    .from(cardLabels)
+    .innerJoin(boards, eq(boards.id, cardLabels.boardId))
+    .where(
+      and(eq(cardLabels.id, etiquetaId), eq(boards.brandId, sesion.marcaActiva.id)),
+    )
+    .limit(1);
+
+  if (filas.length === 0) return { ok: false, mensaje: "No encontramos la etiqueta." };
+
+  await db.delete(cardLabels).where(eq(cardLabels.id, etiquetaId));
+  return { ok: true };
 }

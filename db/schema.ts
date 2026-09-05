@@ -427,6 +427,8 @@ export const boardCards = pgTable(
     dueAt: timestamp("due_at", { withTimezone: true }),
     /** Vincula la tarea con la publicacion que produce, si existe. */
     postId: uuid("post_id").references(() => posts.id, { onDelete: "set null" }),
+    /** Marcada como hecha. Se guarda la fecha, no un booleano, para saber cuando. */
+    completadoAt: timestamp("completado_at", { withTimezone: true }),
     archivadoAt: timestamp("archivado_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

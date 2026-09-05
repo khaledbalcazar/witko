@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useMemo, useState } from "react";
 import {
   DndContext,
   PointerSensor,
   closestCorners,
+  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -16,8 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { useDroppable } from "@dnd-kit/core";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Tags, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
+  completarTarjeta,
   crearColumna,
   crearTarjeta,
   eliminarColumna,
@@ -37,6 +37,7 @@ import {
   renombrarColumna,
 } from "@/app/(app)/tablero/acciones";
 import { DialogoTarjeta } from "./dialogo-tarjeta";
+import { GestorEtiquetas } from "./gestor-etiquetas";
 import { TarjetaTablero, type Tarjeta } from "./tarjeta";
 
 export interface Columna {
@@ -52,22 +53,27 @@ export interface Etiqueta {
   color: string;
 }
 
+const SIN_FILTRO_RESPONSABLE = "todos";
+const SIN_FILTRO_ETIQUETA = "todas";
+
 /**
  * Tablero de tareas del equipo.
  *
- * El movimiento se aplica primero en pantalla y despues se manda al servidor:
- * arrastrar tiene que sentirse instantaneo. Si el servidor rechaza el
- * movimiento, `router.refresh()` devuelve la tarjeta a su lugar.
+ * Todo cambio se pinta primero y se manda al servidor despues. No se llama a
+ * router.refresh(): eso volvia a consultar la pagina entera en cada clic y
+ * hacia que crear una tarjeta o marcar un paso se sintiera lento. Si el
+ * servidor rechaza el cambio, se revierte al estado anterior y se avisa.
  */
 export function Tablero({
   boardId,
   nombre,
   zona,
-  columnas,
+  columnas: columnasIniciales,
   tarjetas: tarjetasIniciales,
-  etiquetas,
+  etiquetas: etiquetasIniciales,
   miembros,
   publicaciones,
+  usuarioId,
 }: {
   boardId: string;
   nombre: string;
@@ -77,25 +83,54 @@ export function Tablero({
   etiquetas: Etiqueta[];
   miembros: Array<{ id: string; nombre: string }>;
   publicaciones: Array<{ id: string; titulo: string; estado: string }>;
+  usuarioId: string;
 }) {
-  const router = useRouter();
+  const [columnas, setColumnas] = useState(columnasIniciales);
   const [tarjetas, setTarjetas] = useState(tarjetasIniciales);
-  const [abierta, setAbierta] = useState<Tarjeta | null>(null);
-  const [filtroAsignado, setFiltroAsignado] = useState("todos");
-  const [filtroEtiqueta, setFiltroEtiqueta] = useState("todas");
+  const [etiquetas, setEtiquetas] = useState(etiquetasIniciales);
+  const [abiertaId, setAbiertaId] = useState<string | null>(null);
+  const [filtroAsignado, setFiltroAsignado] = useState(SIN_FILTRO_RESPONSABLE);
+  const [filtroEtiqueta, setFiltroEtiqueta] = useState(SIN_FILTRO_ETIQUETA);
   const [nuevaColumna, setNuevaColumna] = useState("");
+  const [gestionandoEtiquetas, setGestionandoEtiquetas] = useState(false);
 
   const sensores = useSensors(
     // Un umbral de 6 px separa el clic de la tarjeta del arrastre.
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
   );
 
+  /**
+   * Aplica el cambio en pantalla, manda la accion y revierte si falla.
+   * Es el unico camino por el que se modifica el tablero.
+   */
+  const optimista = useCallback(
+    async <T,>(
+      anterior: T,
+      restaurar: (valor: T) => void,
+      accion: () => Promise<{ ok: boolean; mensaje?: string }>,
+    ) => {
+      try {
+        const resultado = await accion();
+        if (!resultado.ok) {
+          restaurar(anterior);
+          toast.error(resultado.mensaje ?? "No se pudo guardar el cambio.");
+        }
+      } catch {
+        restaurar(anterior);
+        toast.error("Se perdio la conexion. El cambio no se guardo.");
+      }
+    },
+    [],
+  );
+
   const visibles = useMemo(
     () =>
       tarjetas.filter(
         (t) =>
-          (filtroAsignado === "todos" || t.asignadoId === filtroAsignado) &&
-          (filtroEtiqueta === "todas" || t.etiquetaIds.includes(filtroEtiqueta)),
+          (filtroAsignado === SIN_FILTRO_RESPONSABLE ||
+            t.asignadoId === filtroAsignado) &&
+          (filtroEtiqueta === SIN_FILTRO_ETIQUETA ||
+            t.etiquetaIds.includes(filtroEtiqueta)),
       ),
     [tarjetas, filtroAsignado, filtroEtiqueta],
   );
@@ -106,6 +141,61 @@ export function Tablero({
       .sort((a, b) => a.orden - b.orden);
   }
 
+  /* ---------------- tarjetas ---------------- */
+
+  function agregarTarjeta(columnId: string, titulo: string) {
+    const enColumna = tarjetas.filter((t) => t.columnId === columnId);
+    const orden =
+      enColumna.reduce((maximo, t) => Math.max(maximo, t.orden), 0) + 1000;
+
+    const nueva: Tarjeta = {
+      id: crypto.randomUUID(),
+      columnId,
+      orden,
+      titulo,
+      descripcion: null,
+      prioridad: "MEDIA",
+      dueAt: null,
+      completadoAt: null,
+      asignadoId: null,
+      asignadoNombre: null,
+      postId: null,
+      postTitulo: null,
+      postEstado: null,
+      etiquetaIds: [],
+      checklist: [],
+      comentarios: [],
+    };
+
+    const previas = tarjetas;
+    setTarjetas([...tarjetas, nueva]);
+
+    void optimista(previas, setTarjetas, () =>
+      crearTarjeta({ id: nueva.id, boardId, columnId, titulo, orden }),
+    );
+  }
+
+  const actualizarTarjeta = useCallback(
+    (cardId: string, cambio: Partial<Tarjeta>) => {
+      setTarjetas((previas) =>
+        previas.map((t) => (t.id === cardId ? { ...t, ...cambio } : t)),
+      );
+    },
+    [],
+  );
+
+  const quitarTarjeta = useCallback((cardId: string) => {
+    setTarjetas((previas) => previas.filter((t) => t.id !== cardId));
+  }, []);
+
+  function completar(cardId: string, hecha: boolean) {
+    const previas = tarjetas;
+    actualizarTarjeta(cardId, {
+      completadoAt: hecha ? new Date().toISOString() : null,
+    });
+    void optimista(previas, setTarjetas, () => completarTarjeta(cardId, hecha));
+  }
+
   async function alSoltar(evento: DragEndEvent) {
     const { active, over } = evento;
     if (!over) return;
@@ -114,7 +204,6 @@ export function Tablero({
     const tarjeta = tarjetas.find((t) => t.id === cardId);
     if (!tarjeta) return;
 
-    // Se puede soltar sobre otra tarjeta o sobre la columna vacia.
     const sobreTarjeta = tarjetas.find((t) => t.id === over.id);
     const columnaDestino = sobreTarjeta
       ? sobreTarjeta.columnId
@@ -142,26 +231,57 @@ export function Tablero({
             ? siguiente.orden - 1000
             : 1000;
 
-    setTarjetas((previas) =>
-      previas.map((t) =>
-        t.id === cardId
-          ? { ...t, columnId: columnaDestino, orden: ordenNuevo }
-          : t,
-      ),
+    const previas = tarjetas;
+    actualizarTarjeta(cardId, { columnId: columnaDestino, orden: ordenNuevo });
+
+    void optimista(previas, setTarjetas, () =>
+      moverTarjeta({
+        cardId,
+        columnId: columnaDestino,
+        anteriorId: anterior?.id ?? null,
+        siguienteId: siguiente?.id ?? null,
+      }),
     );
-
-    const resultado = await moverTarjeta({
-      cardId,
-      columnId: columnaDestino,
-      anteriorId: anterior?.id ?? null,
-      siguienteId: siguiente?.id ?? null,
-    });
-
-    if (!resultado.ok) {
-      toast.error(resultado.mensaje ?? "No se pudo mover la tarjeta.");
-      router.refresh();
-    }
   }
+
+  /* ---------------- columnas ---------------- */
+
+  function agregarColumna(nombreColumna: string) {
+    const orden =
+      columnas.reduce((maximo, c) => Math.max(maximo, c.orden), 0) + 1000;
+    const nueva: Columna = {
+      id: crypto.randomUUID(),
+      nombre: nombreColumna,
+      color: null,
+      orden,
+    };
+
+    const previas = columnas;
+    setColumnas([...columnas, nueva]);
+    setNuevaColumna("");
+
+    void optimista(previas, setColumnas, () =>
+      crearColumna({ id: nueva.id, boardId, nombre: nombreColumna, color: null }),
+    );
+  }
+
+  function renombrar(columnaId: string, nombreNuevo: string) {
+    const previas = columnas;
+    setColumnas((cs) =>
+      cs.map((c) => (c.id === columnaId ? { ...c, nombre: nombreNuevo } : c)),
+    );
+    void optimista(previas, setColumnas, () =>
+      renombrarColumna(columnaId, nombreNuevo),
+    );
+  }
+
+  function borrarColumna(columnaId: string) {
+    const previas = columnas;
+    setColumnas((cs) => cs.filter((c) => c.id !== columnaId));
+    void optimista(previas, setColumnas, () => eliminarColumna(columnaId));
+  }
+
+  const tarjetaAbierta = tarjetas.find((t) => t.id === abiertaId) ?? null;
 
   return (
     <div className="space-y-4">
@@ -169,11 +289,20 @@ export function Tablero({
         <h1 className="text-xl font-semibold">{nombre}</h1>
 
         <div className="ml-auto flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setGestionandoEtiquetas(true)}
+          >
+            <Tags className="size-4" />
+            Etiquetas
+          </Button>
+
           <Select
             value={filtroAsignado}
-            onValueChange={(v) => setFiltroAsignado(v ?? "todos")}
+            onValueChange={(v) => setFiltroAsignado(v ?? SIN_FILTRO_RESPONSABLE)}
             items={{
-              todos: "Todos los responsables",
+              [SIN_FILTRO_RESPONSABLE]: "Todos los responsables",
               ...Object.fromEntries(miembros.map((m) => [m.id, m.nombre])),
             }}
           >
@@ -181,7 +310,9 @@ export function Tablero({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todos">Todos los responsables</SelectItem>
+              <SelectItem value={SIN_FILTRO_RESPONSABLE}>
+                Todos los responsables
+              </SelectItem>
               {miembros.map((m) => (
                 <SelectItem key={m.id} value={m.id}>
                   {m.nombre}
@@ -192,9 +323,9 @@ export function Tablero({
 
           <Select
             value={filtroEtiqueta}
-            onValueChange={(v) => setFiltroEtiqueta(v ?? "todas")}
+            onValueChange={(v) => setFiltroEtiqueta(v ?? SIN_FILTRO_ETIQUETA)}
             items={{
-              todas: "Todas las etiquetas",
+              [SIN_FILTRO_ETIQUETA]: "Todas las etiquetas",
               ...Object.fromEntries(etiquetas.map((e) => [e.id, e.nombre])),
             }}
           >
@@ -202,7 +333,9 @@ export function Tablero({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="todas">Todas las etiquetas</SelectItem>
+              <SelectItem value={SIN_FILTRO_ETIQUETA}>
+                Todas las etiquetas
+              </SelectItem>
               {etiquetas.map((e) => (
                 <SelectItem key={e.id} value={e.id}>
                   {e.nombre}
@@ -219,35 +352,29 @@ export function Tablero({
         onDragEnd={(e) => void alSoltar(e)}
       >
         <div className="flex gap-3 overflow-x-auto pb-4">
-          {columnas.map((columna) => (
-            <ColumnaTablero
-              key={columna.id}
-              boardId={boardId}
-              columna={columna}
-              tarjetas={porColumna(columna.id)}
-              etiquetas={etiquetas}
-              zona={zona}
-              onAbrir={setAbierta}
-            />
-          ))}
+          {[...columnas]
+            .sort((a, b) => a.orden - b.orden)
+            .map((columna) => (
+              <ColumnaTablero
+                key={columna.id}
+                columna={columna}
+                tarjetas={porColumna(columna.id)}
+                etiquetas={etiquetas}
+                zona={zona}
+                onAgregar={(titulo) => agregarTarjeta(columna.id, titulo)}
+                onRenombrar={(n) => renombrar(columna.id, n)}
+                onBorrar={() => borrarColumna(columna.id)}
+                onAbrir={(t) => setAbiertaId(t.id)}
+                onCompletar={completar}
+              />
+            ))}
 
           <div className="w-64 shrink-0">
             <form
               className="flex gap-1"
-              onSubmit={async (e) => {
+              onSubmit={(e) => {
                 e.preventDefault();
-                if (!nuevaColumna.trim()) return;
-                const resultado = await crearColumna({
-                  boardId,
-                  nombre: nuevaColumna,
-                  color: null,
-                });
-                if (!resultado.ok) {
-                  toast.error(resultado.mensaje ?? "No se pudo crear.");
-                  return;
-                }
-                setNuevaColumna("");
-                router.refresh();
+                if (nuevaColumna.trim()) agregarColumna(nuevaColumna.trim());
               }}
             >
               <Input
@@ -263,14 +390,37 @@ export function Tablero({
         </div>
       </DndContext>
 
-      {abierta && (
+      {tarjetaAbierta && (
         <DialogoTarjeta
-          tarjeta={abierta}
+          tarjeta={tarjetaAbierta}
           etiquetas={etiquetas}
           miembros={miembros}
           publicaciones={publicaciones}
           zona={zona}
-          onCerrar={() => setAbierta(null)}
+          usuarioId={usuarioId}
+          onCambio={(cambio) => actualizarTarjeta(tarjetaAbierta.id, cambio)}
+          onArchivar={() => {
+            setAbiertaId(null);
+            quitarTarjeta(tarjetaAbierta.id);
+          }}
+          onCerrar={() => setAbiertaId(null)}
+        />
+      )}
+
+      {gestionandoEtiquetas && (
+        <GestorEtiquetas
+          boardId={boardId}
+          etiquetas={etiquetas}
+          onCambio={setEtiquetas}
+          onQuitarDeTarjetas={(etiquetaId) =>
+            setTarjetas((previas) =>
+              previas.map((t) => ({
+                ...t,
+                etiquetaIds: t.etiquetaIds.filter((id) => id !== etiquetaId),
+              })),
+            )
+          }
+          onCerrar={() => setGestionandoEtiquetas(false)}
         />
       )}
     </div>
@@ -278,21 +428,26 @@ export function Tablero({
 }
 
 function ColumnaTablero({
-  boardId,
   columna,
   tarjetas,
   etiquetas,
   zona,
+  onAgregar,
+  onRenombrar,
+  onBorrar,
   onAbrir,
+  onCompletar,
 }: {
-  boardId: string;
   columna: Columna;
   tarjetas: Tarjeta[];
   etiquetas: Etiqueta[];
   zona: string;
+  onAgregar: (titulo: string) => void;
+  onRenombrar: (nombre: string) => void;
+  onBorrar: () => void;
   onAbrir: (tarjeta: Tarjeta) => void;
+  onCompletar: (cardId: string, hecha: boolean) => void;
 }) {
-  const router = useRouter();
   const [agregando, setAgregando] = useState(false);
   const [titulo, setTitulo] = useState("");
   const [editandoNombre, setEditandoNombre] = useState(false);
@@ -319,16 +474,14 @@ function ColumnaTablero({
             value={nombre}
             className="h-7"
             onChange={(e) => setNombre(e.target.value)}
-            onBlur={async () => {
+            onBlur={() => {
               setEditandoNombre(false);
-              if (nombre.trim() === columna.nombre) return;
-              const r = await renombrarColumna(columna.id, nombre);
-              if (!r.ok) {
-                toast.error(r.mensaje ?? "No se pudo renombrar.");
+              const limpio = nombre.trim();
+              if (!limpio || limpio === columna.nombre) {
                 setNombre(columna.nombre);
                 return;
               }
-              router.refresh();
+              onRenombrar(limpio);
             }}
             onKeyDown={(e) => {
               if (e.key === "Enter") e.currentTarget.blur();
@@ -356,14 +509,7 @@ function ColumnaTablero({
           type="button"
           aria-label={"Borrar columna " + columna.nombre}
           className="text-muted-foreground hover:text-destructive"
-          onClick={async () => {
-            const r = await eliminarColumna(columna.id);
-            if (!r.ok) {
-              toast.error(r.mensaje ?? "No se pudo borrar.");
-              return;
-            }
-            router.refresh();
-          }}
+          onClick={onBorrar}
         >
           <Trash2 className="size-3.5" />
         </button>
@@ -381,6 +527,7 @@ function ColumnaTablero({
               etiquetas={etiquetas}
               zona={zona}
               onAbrir={onAbrir}
+              onCompletar={onCompletar}
             />
           ))}
         </SortableContext>
@@ -389,21 +536,13 @@ function ColumnaTablero({
       <div className="p-2 pt-0">
         {agregando ? (
           <form
-            onSubmit={async (e) => {
+            onSubmit={(e) => {
               e.preventDefault();
-              if (!titulo.trim()) return;
-              const r = await crearTarjeta({
-                boardId,
-                columnId: columna.id,
-                titulo,
-              });
-              if (!r.ok) {
-                toast.error(r.mensaje ?? "No se pudo crear.");
-                return;
-              }
+              const limpio = titulo.trim();
+              if (!limpio) return;
+              onAgregar(limpio);
+              // Se limpia sin cerrar: cargar varias tareas seguidas es lo comun.
               setTitulo("");
-              setAgregando(false);
-              router.refresh();
             }}
             className="space-y-2"
           >
@@ -413,7 +552,10 @@ function ColumnaTablero({
               placeholder="Titulo de la tarea"
               onChange={(e) => setTitulo(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Escape") setAgregando(false);
+                if (e.key === "Escape") {
+                  setTitulo("");
+                  setAgregando(false);
+                }
               }}
             />
             <div className="flex gap-1">
@@ -424,9 +566,12 @@ function ColumnaTablero({
                 type="button"
                 size="sm"
                 variant="ghost"
-                onClick={() => setAgregando(false)}
+                onClick={() => {
+                  setTitulo("");
+                  setAgregando(false);
+                }}
               >
-                Cancelar
+                Listo
               </Button>
             </div>
           </form>
@@ -451,11 +596,13 @@ function TarjetaArrastrable({
   etiquetas,
   zona,
   onAbrir,
+  onCompletar,
 }: {
   tarjeta: Tarjeta;
   etiquetas: Etiqueta[];
   zona: string;
   onAbrir: (tarjeta: Tarjeta) => void;
+  onCompletar: (cardId: string, hecha: boolean) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: tarjeta.id });
@@ -473,6 +620,7 @@ function TarjetaArrastrable({
         etiquetas={etiquetas}
         zona={zona}
         onAbrir={() => onAbrir(tarjeta)}
+        onCompletar={(hecha) => onCompletar(tarjeta.id, hecha)}
       />
     </div>
   );

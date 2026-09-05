@@ -22,6 +22,28 @@ export interface Respuesta {
 /* Usuarios                                                            */
 /* ------------------------------------------------------------------ */
 
+function correoNormalizado(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+/**
+ * Busca un usuario en Supabase Auth por correo. La API de administracion no
+ * expone un filtro directo, asi que se recorre la primera pagina: para un
+ * equipo de marketing alcanza de sobra.
+ */
+async function buscarEnAuth(
+  supabase: ReturnType<typeof supabaseAdmin>,
+  email: string,
+): Promise<string | null> {
+  const { data, error } = await supabase.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+
+  if (error) return null;
+  return data.users.find((u) => u.email?.toLowerCase() === email)?.id ?? null;
+}
+
 const invitacionSchema = z.object({
   nombre: z.string().trim().min(1, "Falta el nombre.").max(120),
   email: z.email("Ese correo no parece valido."),
@@ -65,43 +87,114 @@ export async function invitarUsuario(datos: unknown): Promise<Respuesta> {
     user_metadata: { nombre },
   });
 
-  if (error || !data.user) {
-    return {
-      ok: false,
-      mensaje: "No se pudo crear el usuario: " + (error?.message ?? "error desconocido"),
-    };
+  let userId = data?.user?.id;
+
+  if (error || !userId) {
+    // Puede existir en Supabase Auth pero no en nuestra tabla: pasa si un alta
+    // anterior quedo a medias. En ese caso se lo adopta con una contrasena
+    // nueva, en vez de dejar un correo inutilizable para siempre.
+    const existenteEnAuth = await buscarEnAuth(supabase, correoNormalizado(email));
+
+    if (!existenteEnAuth) {
+      return {
+        ok: false,
+        mensaje:
+          "No se pudo crear el usuario: " +
+          (error?.message ?? "error desconocido"),
+      };
+    }
+
+    const { error: fallo } = await supabase.auth.admin.updateUserById(
+      existenteEnAuth,
+      { password: passwordTemporal, email_confirm: true },
+    );
+
+    if (fallo) {
+      return {
+        ok: false,
+        mensaje: "El correo ya existe y no se pudo reutilizar: " + fallo.message,
+      };
+    }
+
+    userId = existenteEnAuth;
   }
+
+  const id = userId;
 
   try {
     await db.transaction(async (tx) => {
       await tx.insert(users).values({
-        id: data.user.id,
+        id,
         nombre,
-        email: email.toLowerCase(),
+        email: correoNormalizado(email),
         rol,
       });
 
-      await tx.insert(brandMembers).values(
-        brandIds.map((brandId) => ({ brandId, userId: data.user.id, rol })),
-      );
+      await tx
+        .insert(brandMembers)
+        .values(brandIds.map((brandId) => ({ brandId, userId: id, rol })));
 
       await registrarAuditoria(tx, {
         actorId: sesion.usuario.id,
         entidad: "user",
-        entidadId: data.user.id,
+        entidadId: id,
         accion: "INVITAR",
         diff: { nombre, email, rol, brandIds },
       });
     });
   } catch (error) {
-    // Si falla la parte nuestra, se borra el usuario de Auth: dejar uno suelto
-    // que no existe en `users` haria que no pueda entrar ni ser reinvitado.
-    await supabase.auth.admin.deleteUser(data.user.id);
-    console.error(error);
-    return { ok: false, mensaje: "No se pudo completar el alta." };
+    console.error("Fallo el alta de usuario:", error);
+    return {
+      ok: false,
+      mensaje:
+        "Se creo la cuenta pero no se pudo dar de alta en el sistema. " +
+        "Volve a intentar; si sigue fallando, revisa los registros del servidor.",
+    };
   }
 
   revalidatePath("/admin/usuarios");
+  return { ok: true, passwordTemporal };
+}
+
+/**
+ * Genera una contrasena nueva para un usuario y la devuelve una sola vez.
+ *
+ * Es lo que reemplaza al "olvide mi contrasena" mientras no haya envio de
+ * correos: quien administra la genera y se la pasa a la persona.
+ */
+export async function resetearPassword(userId: string): Promise<Respuesta> {
+  const sesion = await exigirAdmin();
+
+  const filas = await db
+    .select({ nombre: users.nombre, email: users.email })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  if (filas.length === 0) {
+    return { ok: false, mensaje: "No encontramos ese usuario." };
+  }
+
+  const passwordTemporal = randomBytes(9).toString("base64url");
+
+  const { error } = await supabaseAdmin().auth.admin.updateUserById(userId, {
+    password: passwordTemporal,
+  });
+
+  if (error) {
+    return {
+      ok: false,
+      mensaje: "No se pudo cambiar la contrasena: " + error.message,
+    };
+  }
+
+  await registrarAuditoria(db, {
+    actorId: sesion.usuario.id,
+    entidad: "user",
+    entidadId: userId,
+    accion: "RESETEAR_PASSWORD",
+  });
+
   return { ok: true, passwordTemporal };
 }
 

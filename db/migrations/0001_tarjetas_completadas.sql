@@ -1,0 +1,1 @@
+ALTER TABLE "board_cards" ADD COLUMN "completado_at" timestamp with time zone;

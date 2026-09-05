@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, Plus } from "lucide-react";
+import { Copy, KeyRound, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -29,6 +29,7 @@ import {
   activarUsuario,
   cambiarRolEnMarca,
   invitarUsuario,
+  resetearPassword,
 } from "@/app/(app)/admin/acciones";
 
 type Rol = "CM" | "JEFE" | "ADMIN";
@@ -57,6 +58,10 @@ export function PanelUsuarios({
 }) {
   const router = useRouter();
   const [abierto, setAbierto] = useState(false);
+  const [passwordGenerada, setPasswordGenerada] = useState<{
+    nombre: string;
+    password: string;
+  } | null>(null);
 
   return (
     <div className="space-y-4">
@@ -84,6 +89,25 @@ export function PanelUsuarios({
               <Badge variant="outline">{ETIQUETA_ROL[usuario.rol]}</Badge>
 
               {!usuario.activo && <Badge variant="secondary">Inactivo</Badge>}
+
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const r = await resetearPassword(usuario.id);
+                  if (!r.ok || !r.passwordTemporal) {
+                    toast.error(r.mensaje ?? "No se pudo generar.");
+                    return;
+                  }
+                  setPasswordGenerada({
+                    nombre: usuario.nombre,
+                    password: r.passwordTemporal,
+                  });
+                }}
+              >
+                <KeyRound className="size-4" />
+                Nueva contrasena
+              </Button>
 
               <Button
                 variant="ghost"
@@ -158,6 +182,43 @@ export function PanelUsuarios({
         abierto={abierto}
         onCerrar={() => setAbierto(false)}
       />
+
+      {passwordGenerada && (
+        <Dialog open onOpenChange={() => setPasswordGenerada(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                Contrasena nueva de {passwordGenerada.nombre}
+              </DialogTitle>
+              <DialogDescription>
+                Se muestra una sola vez. Pasasela por el canal que usen y pedile
+                que la cambie al entrar.
+              </DialogDescription>
+            </DialogHeader>
+
+            <Card className="flex items-center gap-2 p-3">
+              <code className="flex-1 break-all text-sm">
+                {passwordGenerada.password}
+              </code>
+              <Button
+                variant="outline"
+                size="icon"
+                aria-label="Copiar"
+                onClick={() => {
+                  void navigator.clipboard.writeText(passwordGenerada.password);
+                  toast.success("Copiada.");
+                }}
+              >
+                <Copy className="size-4" />
+              </Button>
+            </Card>
+
+            <DialogFooter>
+              <Button onClick={() => setPasswordGenerada(null)}>Listo</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

@@ -6,6 +6,7 @@ import {
   boardColumns,
   boards,
   cardChecklistItems,
+  cardComments,
   cardLabelLinks,
   cardLabels,
   posts,
@@ -62,6 +63,17 @@ export async function obtenerTablero(brandId: string) {
     .where(eq(boardCards.boardId, tablero.id))
     .orderBy(asc(cardChecklistItems.orden));
 
+  const comentarios = await db
+    .select({
+      comentario: cardComments,
+      autor: { id: users.id, nombre: users.nombre },
+    })
+    .from(cardComments)
+    .innerJoin(boardCards, eq(boardCards.id, cardComments.cardId))
+    .innerJoin(users, eq(users.id, cardComments.autorId))
+    .where(eq(boardCards.boardId, tablero.id))
+    .orderBy(asc(cardComments.createdAt));
+
   return {
     tablero,
     columnas,
@@ -76,6 +88,15 @@ export async function obtenerTablero(brandId: string) {
       checklist: checklists
         .filter((c) => c.card_checklist_items.cardId === t.tarjeta.id)
         .map((c) => c.card_checklist_items),
+      comentarios: comentarios
+        .filter((c) => c.comentario.cardId === t.tarjeta.id)
+        .map((c) => ({
+          id: c.comentario.id,
+          cuerpo: c.comentario.cuerpo,
+          autorId: c.autor.id,
+          autorNombre: c.autor.nombre,
+          createdAt: c.comentario.createdAt,
+        })),
     })),
   };
 }
