@@ -21,6 +21,19 @@ const cache = globalThis as unknown as {
   __sqlWitko?: ReturnType<typeof postgres>;
 };
 
+/**
+ * Host y puerto de la cadena, sin usuario ni contrasena. Sirve para decir a
+ * donde se esta intentando conectar sin filtrar credenciales en un log.
+ */
+function hostDe(url: string): string {
+  try {
+    const analizada = new URL(url);
+    return analizada.hostname + (analizada.port ? ":" + analizada.port : "");
+  } catch {
+    return "un host que no se pudo interpretar";
+  }
+}
+
 /** Vercel, y cualquier otro entorno de funciones efimeras. */
 function esEntornoSinServidor(): boolean {
   return Boolean(process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME);
@@ -42,9 +55,11 @@ function crearConexion(): ReturnType<typeof postgres> {
   if (esEntornoSinServidor() && /(?:^|@)db\.[a-z0-9]+\.supabase\.co/.test(url)) {
     throw new Error(
       "DATABASE_URL apunta a la conexion directa de Supabase, que no funciona " +
-        "en un entorno sin servidor. Usa la cadena del transaction pooler " +
-        "(Connect > Transaction pooler, host ...pooler.supabase.com puerto 6543) " +
-        "y volve a desplegar.",
+        "en un entorno sin servidor. Esta apuntando a " +
+        hostDe(url) +
+        " y tiene que apuntar a ...pooler.supabase.com:6543 (Connect > " +
+        "Transaction pooler). Revisa que la variable este guardada para el " +
+        "entorno Production y volve a desplegar.",
     );
   }
 
