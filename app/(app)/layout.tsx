@@ -10,6 +10,14 @@ import type { EnlaceNav } from "@/components/shell/iconos-nav";
 import { PantallaConfiguracion } from "@/components/pantalla-configuracion";
 import { variablesFaltantes } from "@/lib/auth/configuracion";
 
+/**
+ * Nada de lo que cuelga de este layout se puede prerenderizar: todo depende de
+ * quien inicio sesion y de la marca activa, que viven en cookies. Sin esto,
+ * `next build` intenta generarlas como estaticas y falla al no encontrar
+ * sesion ni base de datos.
+ */
+export const dynamic = "force-dynamic";
+
 export default async function LayoutApp({
   children,
 }: {

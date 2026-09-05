@@ -5,6 +5,7 @@ import { and, asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { brandMembers, brands, users } from "@/db/schema";
 import type { Rol } from "@/lib/workflow/types";
+import { configuracionCompleta } from "./configuracion";
 import { supabaseServidor } from "./supabase";
 
 /**
@@ -39,6 +40,10 @@ export interface Sesion {
 
 /** Cacheado por request: varios componentes la piden en el mismo render. */
 export const obtenerSesion = cache(async (): Promise<Sesion | null> => {
+  // Sin configuracion no hay sesion posible. Devolver null en vez de reventar
+  // hace que el usuario termine en /login, donde se explica que falta.
+  if (!configuracionCompleta()) return null;
+
   const supabase = await supabaseServidor();
   const {
     data: { user },

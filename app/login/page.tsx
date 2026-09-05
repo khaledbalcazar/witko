@@ -4,6 +4,13 @@ import { FormularioLogin } from "./formulario";
 
 export const metadata = { title: "Ingresar" };
 
+/**
+ * Se evalua en cada visita, no en el build: el chequeo de configuracion mira
+ * el entorno de ejecucion, y prerenderizarla congelaria el resultado del
+ * momento en que se compilo.
+ */
+export const dynamic = "force-dynamic";
+
 export default async function PaginaLogin({
   searchParams,
 }: {
