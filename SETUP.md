@@ -85,21 +85,15 @@ npm run db:seed       # crea las marcas Witko y Palma Travel con sus tableros
 
 ## 6. Primer usuario administrador **[Fase 0]**
 
-Supabase no permite crear usuarios con contraseña desde el SQL editor, así que
-el primero se crea a mano:
+Supabase no permite setear contraseñas desde el SQL editor, así que el primer
+usuario se crea con un script:
 
-1. **Authentication → Users → Add user → Create new user**
-2. Email y contraseña del admin. Marcar **Auto Confirm User**.
-3. Copiar el UUID del usuario recién creado.
-4. Correr en el **SQL Editor**, reemplazando el UUID y los datos:
-
-```sql
-insert into users (id, nombre, email, rol)
-values ('UUID-COPIADO', 'Nombre Apellido', 'admin@empresa.com', 'ADMIN');
-
-insert into brand_members (brand_id, user_id, rol)
-select id, 'UUID-COPIADO', 'ADMIN' from brands;
+```bash
+npm run crear-admin -- "Nombre Apellido" admin@empresa.com
 ```
+
+Imprime en la consola una contraseña generada al azar. Queda como `ADMIN` y con
+acceso a todas las marcas. Entrá con esos datos y cambiá la contraseña.
 
 Desde ahí, el resto de los usuarios se invitan desde `/admin/usuarios` dentro de
 la app: se elige nombre, correo, rol y marcas, y la app devuelve una **contraseña
