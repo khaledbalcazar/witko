@@ -218,13 +218,44 @@ revisión tarda semanas.
 
 ## 11. Despliegue
 
-- **App:** Vercel, importando el repo. Cargar todas las variables de entorno del
-  `.env.local` en el proyecto.
-- **Worker:** *no* va en Vercel. Es un proceso que tiene que estar siempre
-  prendido; las funciones serverless se apagan entre requests. Va en Railway,
-  Fly.io o un VPS chico, con el `Dockerfile` de `worker/`. Necesita
-  `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TOKEN_ENCRYPTION_KEY` y las
-  credenciales de las plataformas.
-- Correr **un solo** worker es suficiente. Si se corren varios, el
-  `SKIP LOCKED` evita que se pisen, pero cada uno necesita un `WORKER_ID`
-  distinto.
+### App (Vercel)
+
+Importar el repositorio. Framework y comandos los detecta solo. Cargar estas
+variables en **Settings → Environment Variables**:
+
+| Variable | Valor |
+|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | igual que en local |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | igual que en local |
+| `SUPABASE_SERVICE_ROLE_KEY` | igual que en local |
+| `DATABASE_URL` | **la del pooler**, ver abajo |
+| `TOKEN_ENCRYPTION_KEY` | **la misma que usa el worker** |
+| `SUPABASE_STORAGE_BUCKET` | `medios` |
+| `USE_MOCK_ADAPTERS` | `1` mientras dure la Fase 0 |
+| `NOTIFIER` | `console` |
+
+> **`DATABASE_URL` en Vercel no es la misma que en local.** En serverless cada
+> invocación puede abrir su propia conexión y la conexión directa
+> (`db.PROYECTO.supabase.co:5432`) agota el límite enseguida. Usar la del
+> **Transaction pooler** (`...pooler.supabase.com:6543`), que es justamente para
+> eso. El cliente ya va con `prepare: false`, que es lo que ese modo requiere.
+
+> `TOKEN_ENCRYPTION_KEY` tiene que ser idéntica en Vercel y en el worker: si no,
+> el worker no puede descifrar los tokens que guardó la app.
+### Worker
+
+**No va en Vercel.** Tiene que estar siempre prendido para publicar en el
+minuto exacto, y las funciones serverless se apagan entre requests. Va en
+Railway, Fly.io o un VPS chico, con el `Dockerfile` de `worker/`.
+
+Necesita `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `TOKEN_ENCRYPTION_KEY`,
+`USE_MOCK_ADAPTERS` y, desde la Fase 1, las credenciales de las plataformas.
+
+Correr **un solo** worker alcanza. Si se corren varios, el `SKIP LOCKED` evita
+que se pisen, pero cada uno necesita un `WORKER_ID` distinto.
+
+> Mientras dure la Fase 0 el worker es opcional en producción: con
+> `USE_MOCK_ADAPTERS=1` lo único que hace es marcar como publicados los posts
+> programados, con un permalink falso. Se puede desplegar solo la app y dejar el
+> worker corriendo en una máquina del equipo, o directamente no correrlo hasta
+> la Fase 1.
