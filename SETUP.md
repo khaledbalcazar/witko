@@ -95,6 +95,18 @@ npm run crear-admin -- "Nombre Apellido" admin@empresa.com
 Imprime en la consola una contraseña generada al azar. Queda como `ADMIN` y con
 acceso a todas las marcas. Entrá con esos datos y cambiá la contraseña.
 
+### Si alguien se olvida la contraseña
+
+Mientras no haya envío de correos configurado (paso 10), no hay "olvidé mi
+contraseña" por email. Quien administra la genera de nuevo:
+
+```bash
+npm run listar-usuarios                              # para ver los correos
+npm run resetear-password -- correo@empresa.com      # imprime una nueva
+```
+
+Se corre desde la máquina que tiene el `.env` con la clave de servicio.
+
 Desde ahí, el resto de los usuarios se invitan desde `/admin/usuarios` dentro de
 la app: se elige nombre, correo, rol y marcas, y la app devuelve una **contraseña
 temporal que se muestra una sola vez**. Hay que pasársela a la persona por el
