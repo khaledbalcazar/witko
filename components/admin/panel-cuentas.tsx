@@ -210,6 +210,11 @@ function DialogoCuenta({
             <Select
               value={plataforma}
               onValueChange={(v) => setPlataforma(v as Plataforma)}
+              items={{
+                INSTAGRAM: "Instagram",
+                FACEBOOK: "Facebook",
+                TIKTOK: "TikTok",
+              }}
             >
               <SelectTrigger>
                 <SelectValue />

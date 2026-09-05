@@ -37,6 +37,9 @@ export function SelectorDeMarca({
   return (
     <Select
       value={marcaActivaId}
+      // Sin `items`, Base UI muestra el valor crudo en el disparador: el id de
+      // la marca en vez de su nombre.
+      items={Object.fromEntries(marcas.map((m) => [m.id, m.nombre]))}
       disabled={pendiente}
       onValueChange={(id) =>
         id &&

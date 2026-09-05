@@ -375,7 +375,12 @@ function Filtro({
   ancho: string;
 }) {
   return (
-    <Select value={valor} onValueChange={(v) => onCambio(v ?? valor)}>
+    <Select
+      value={valor}
+      onValueChange={(v) => onCambio(v ?? valor)}
+      // Base UI muestra el valor crudo si no recibe el mapa de etiquetas.
+      items={Object.fromEntries(opciones.map((o) => [o.valor, o.etiqueta]))}
+    >
       <SelectTrigger className={ancho} size="sm">
         <SelectValue />
       </SelectTrigger>

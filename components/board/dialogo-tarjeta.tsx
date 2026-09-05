@@ -38,6 +38,13 @@ import type { Tarjeta } from "./tarjeta";
 const SIN_ASIGNAR = "sin-asignar";
 const SIN_POST = "sin-post";
 
+const ETIQUETA_PRIORIDAD: Record<Tarjeta["prioridad"], string> = {
+  BAJA: "Baja",
+  MEDIA: "Media",
+  ALTA: "Alta",
+  URGENTE: "Urgente",
+};
+
 /** Detalle de una tarea: responsable, prioridad, fecha, etiquetas y checklist. */
 export function DialogoTarjeta({
   tarjeta,
@@ -121,7 +128,14 @@ export function DialogoTarjeta({
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-2">
               <Label>Responsable</Label>
-              <Select value={asignadoId} onValueChange={(v) => setAsignadoId(v ?? SIN_ASIGNAR)}>
+              <Select
+                value={asignadoId}
+                onValueChange={(v) => setAsignadoId(v ?? SIN_ASIGNAR)}
+                items={{
+                  [SIN_ASIGNAR]: "Sin asignar",
+                  ...Object.fromEntries(miembros.map((m) => [m.id, m.nombre])),
+                }}
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -141,15 +155,17 @@ export function DialogoTarjeta({
               <Select
                 value={prioridad}
                 onValueChange={(v) => setPrioridad(v as Tarjeta["prioridad"])}
+                items={ETIQUETA_PRIORIDAD}
               >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="BAJA">Baja</SelectItem>
-                  <SelectItem value="MEDIA">Media</SelectItem>
-                  <SelectItem value="ALTA">Alta</SelectItem>
-                  <SelectItem value="URGENTE">Urgente</SelectItem>
+                  {Object.entries(ETIQUETA_PRIORIDAD).map(([valor, texto]) => (
+                    <SelectItem key={valor} value={valor}>
+                      {texto}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -167,7 +183,14 @@ export function DialogoTarjeta({
 
           <div className="space-y-2">
             <Label>Publicacion vinculada</Label>
-            <Select value={postId} onValueChange={(v) => setPostId(v ?? SIN_POST)}>
+            <Select
+              value={postId}
+              onValueChange={(v) => setPostId(v ?? SIN_POST)}
+              items={{
+                [SIN_POST]: "Ninguna",
+                ...Object.fromEntries(publicaciones.map((p) => [p.id, p.titulo])),
+              }}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

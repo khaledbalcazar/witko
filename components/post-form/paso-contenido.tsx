@@ -351,6 +351,9 @@ function OpcionesTiktok({
         <Label>Privacidad</Label>
         <Select
           value={tiktok.privacidad ?? "SELF_ONLY"}
+          items={Object.fromEntries(
+            PRIVACIDADES.map((p) => [p.valor, p.etiqueta]),
+          )}
           disabled={forzadoPublico}
           onValueChange={(valor) =>
             actualizar({ privacidad: valor ?? "SELF_ONLY" })

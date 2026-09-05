@@ -68,6 +68,10 @@ export function PanelMarcas({ marcas }: { marcas: MarcaVista[] }) {
             <p className="text-sm">Modo de publicacion en TikTok</p>
             <Select
               value={marca.modoTiktok}
+              items={{
+                MEDIA_UPLOAD: "Inbox del creador (recomendado)",
+                DIRECT_POST: "Publicacion directa",
+              }}
               onValueChange={(valor) =>
                 void ajustar(marca.id, {
                   modoTiktok: valor as MarcaVista["modoTiktok"],

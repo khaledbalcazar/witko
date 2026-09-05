@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -56,13 +57,16 @@ export function MenuUsuario({
         <span className="text-xs font-medium">{iniciales}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-56">
-        <DropdownMenuLabel className="font-normal">
-          <p className="text-sm font-medium">{nombre}</p>
-          <p className="text-xs text-muted-foreground">{email}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {ETIQUETA_ROL[rol] ?? rol}
-          </p>
-        </DropdownMenuLabel>
+        {/* Base UI exige que la etiqueta viva dentro de un grupo. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="font-normal">
+            <span className="block text-sm font-medium">{nombre}</span>
+            <span className="block text-xs text-muted-foreground">{email}</span>
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {ETIQUETA_ROL[rol] ?? rol}
+            </span>
+          </DropdownMenuLabel>
+        </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onSelect={() => void salir()}>
           Cerrar sesion

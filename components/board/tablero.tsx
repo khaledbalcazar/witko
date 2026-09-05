@@ -169,7 +169,14 @@ export function Tablero({
         <h1 className="text-xl font-semibold">{nombre}</h1>
 
         <div className="ml-auto flex flex-wrap gap-2">
-          <Select value={filtroAsignado} onValueChange={(v) => setFiltroAsignado(v ?? "todos")}>
+          <Select
+            value={filtroAsignado}
+            onValueChange={(v) => setFiltroAsignado(v ?? "todos")}
+            items={{
+              todos: "Todos los responsables",
+              ...Object.fromEntries(miembros.map((m) => [m.id, m.nombre])),
+            }}
+          >
             <SelectTrigger size="sm" className="w-[170px]">
               <SelectValue />
             </SelectTrigger>
@@ -183,7 +190,14 @@ export function Tablero({
             </SelectContent>
           </Select>
 
-          <Select value={filtroEtiqueta} onValueChange={(v) => setFiltroEtiqueta(v ?? "todas")}>
+          <Select
+            value={filtroEtiqueta}
+            onValueChange={(v) => setFiltroEtiqueta(v ?? "todas")}
+            items={{
+              todas: "Todas las etiquetas",
+              ...Object.fromEntries(etiquetas.map((e) => [e.id, e.nombre])),
+            }}
+          >
             <SelectTrigger size="sm" className="w-[170px]">
               <SelectValue />
             </SelectTrigger>

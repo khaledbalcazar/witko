@@ -114,6 +114,7 @@ export function PanelUsuarios({
                     <span className="text-xs">{marca.nombre}</span>
                     <Select
                       value={m.rol}
+                      items={ETIQUETA_ROL}
                       onValueChange={async (rol) => {
                         const r = await cambiarRolEnMarca(
                           usuario.id,
@@ -268,7 +269,11 @@ function DialogoInvitar({
 
           <div className="space-y-2">
             <Label>Rol</Label>
-            <Select value={rol} onValueChange={(v) => setRol(v as Rol)}>
+            <Select
+              value={rol}
+              onValueChange={(v) => setRol(v as Rol)}
+              items={ETIQUETA_ROL}
+            >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
