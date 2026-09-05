@@ -43,3 +43,6 @@ next-env.d.ts
 # entorno local
 .env
 .env.local
+# La plantilla si va al repositorio: no tiene valores, solo los nombres de las
+# variables y de donde sacar cada una.
+!.env.example
