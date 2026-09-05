@@ -329,7 +329,7 @@ async function avisar(
 }
 
 /** Cuenta los jobs pendientes, para el log del ciclo. */
-export async function hayTrabajoPendiente(ahora = new Date()): Promise<boolean> {
+export async function hayTrabajoPendiente(): Promise<boolean> {
   const filas = await db
     .select({ id: publishJobs.id })
     .from(publishJobs)

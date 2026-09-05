@@ -32,7 +32,7 @@ function credencial(actor: Actor): Autorizado {
 export function evaluarTransicion(
   entrada: EntradaTransicion,
 ): ResultadoTransicion {
-  const { accion, post, marca, actor, ahora } = entrada;
+  const { accion, post, ahora } = entrada;
 
   if (post.archivadoAt) {
     return rechazo(

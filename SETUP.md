@@ -95,7 +95,18 @@ select id, 'UUID-COPIADO', 'ADMIN' from brands;
 ```
 
 Desde ahí, el resto de los usuarios se invitan desde `/admin/usuarios` dentro de
-la app.
+la app: se elige nombre, correo, rol y marcas, y la app devuelve una **contraseña
+temporal que se muestra una sola vez**. Hay que pasársela a la persona por el
+canal que usen habitualmente y pedirle que la cambie al entrar. No se manda por
+correo porque todavía no hay dominio verificado para enviar (ver paso 10).
+
+### Cuentas sociales de prueba
+
+En `/admin/cuentas` se cargan a mano las cuentas de cada marca (nombre visible e
+identificador). Con `USE_MOCK_ADAPTERS=1` no hacen falta credenciales reales:
+alcanza para recorrer todo el circuito de carga, aprobación, programación y
+"publicación" simulada. Cuando estén aprobadas las apps, esas mismas filas se
+completan con los tokens reales desde el flujo OAuth.
 
 ---
 
