@@ -15,19 +15,25 @@ export interface VariableFaltante {
 const REQUERIDAS: VariableFaltante[] = [
   {
     nombre: "NEXT_PUBLIC_SUPABASE_URL",
-    donde: "Supabase > Project Settings > API > Project URL",
+    donde: "Supabase > boton Connect > Project URL",
   },
   {
     nombre: "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-    donde: "Supabase > Project Settings > API > anon public",
+    donde:
+      "Supabase > Project Settings > API Keys > Publishable key (sb_publishable_...), " +
+      "antes llamada anon",
   },
   {
     nombre: "SUPABASE_SERVICE_ROLE_KEY",
-    donde: "Supabase > Project Settings > API > service_role",
+    donde:
+      "Supabase > Project Settings > API Keys > Secret key (sb_secret_...), " +
+      "antes llamada service_role",
   },
   {
     nombre: "DATABASE_URL",
-    donde: "Supabase > Project Settings > Database > Connection string (URI)",
+    donde:
+      "Supabase > boton Connect > Connection string (URI), reemplazando " +
+      "[YOUR-PASSWORD] por la contrasena de la base",
   },
   {
     nombre: "TOKEN_ENCRYPTION_KEY",

@@ -23,13 +23,20 @@ npm install
    `us-east-1`, la más cercana con menor latencia desde Paraguay).
 2. Anotar la contraseña de la base que aparece al crearlo: no se vuelve a
    mostrar.
-3. En **Project Settings → API**, copiar:
+3. En **Project Settings → API Keys**, copiar:
+   - `Publishable key` (`sb_publishable_...`) → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+   - `Secret key` (`sb_secret_...`, se revela con el botón del ojo) →
+     `SUPABASE_SERVICE_ROLE_KEY` (bypassa RLS: solo va en el servidor y en el
+     worker, nunca en el navegador)
+
+   > Supabase renombró las claves. La *publishable* es la que antes se llamaba
+   > `anon` y la *secret* la que antes era `service_role`. Los nombres de las
+   > variables se mantienen; sirven las dos generaciones de claves.
+
+4. Del botón verde **Connect** (arriba del panel), copiar:
    - `Project URL` → `NEXT_PUBLIC_SUPABASE_URL`
-   - `anon public` → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `service_role` → `SUPABASE_SERVICE_ROLE_KEY` (esta bypassa RLS: solo va en
-     el servidor y en el worker, nunca en el navegador)
-4. En **Project Settings → Database → Connection string → URI**, copiar la
-   cadena y reemplazar `[YOUR-PASSWORD]` → `DATABASE_URL`.
+   - `Connection string → URI` → `DATABASE_URL`, reemplazando
+     `[YOUR-PASSWORD]` por la contraseña de la base del paso 2.
 
 ---
 
