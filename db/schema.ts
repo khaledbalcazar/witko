@@ -68,6 +68,8 @@ export const estadoJob = pgEnum("estado_job", [
 
 export const tipoMedia = pgEnum("tipo_media", ["IMAGEN", "VIDEO"]);
 
+export const proporcionPost = pgEnum("proporcion_post", ["CUADRADA", "VERTICAL"]);
+
 export const accionAprobacion = pgEnum("accion_aprobacion", [
   "APROBAR",
   "SOLICITAR_CAMBIOS",
@@ -182,6 +184,12 @@ export const posts = pgTable(
       .references(() => users.id),
     tituloInterno: text("titulo_interno").notNull(),
     tipo: tipoPost("tipo").notNull(),
+    /**
+     * Proporcion del carrusel (1:1 o 4:5). Null en los tipos que no la eligen
+     * y en los carruseles anteriores a esta funcion, que siguen validandose
+     * con el rango amplio de siempre.
+     */
+    proporcion: proporcionPost("proporcion"),
     estado: estadoPost("estado").notNull().default("BORRADOR"),
     /** Mismo horario para todos los destinos del post (decision de diseno). */
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }),

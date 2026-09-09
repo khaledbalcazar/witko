@@ -21,10 +21,13 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import {
   LIMITES,
+  PROPORCIONES,
+  cumpleProporcion,
   validarArchivo,
   validarConjunto,
 } from "@/lib/validation/media-limits";
 import { eliminarMedia } from "@/app/(app)/posts/acciones";
+import type { ProporcionPost } from "@/lib/validation/tipos";
 import type { EstadoFormulario, MedioCargado } from "./estado";
 
 /**
@@ -58,6 +61,19 @@ export function PasoMedios({
           duracionSeg: m.duracionMs != null ? m.duracionMs / 1000 : null,
         })),
         estado.tipo,
+        estado.proporcion,
+      )
+    : [];
+
+  // Al cambiar la proporcion, los archivos que ya estaban pueden dejar de
+  // servir. Se avisa en vez de borrarlos solos: el que decide es el usuario.
+  const desalineados = estado.proporcion
+    ? estado.medios.filter(
+        (m) =>
+          m.ancho != null &&
+          m.alto != null &&
+          estado.proporcion != null &&
+          !cumpleProporcion(m.ancho, m.alto, estado.proporcion),
       )
     : [];
 
@@ -93,6 +109,8 @@ export function PasoMedios({
             dimensiones.duracionMs != null ? dimensiones.duracionMs / 1000 : null,
         },
         estado.tipo,
+        null,
+        estado.proporcion,
       );
 
       if (problema) {
@@ -170,6 +188,56 @@ export function PasoMedios({
 
   return (
     <div className="space-y-4">
+      {limite && limite.proporciones.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Proporcion</p>
+          <div className="flex gap-2">
+            {limite.proporciones.map((opcion) => (
+              <button
+                key={opcion}
+                type="button"
+                onClick={() => onCambio({ proporcion: opcion })}
+                className={cn(
+                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
+                  estado.proporcion === opcion
+                    ? "border-primary bg-accent/50"
+                    : "hover:bg-accent/30",
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "block rounded-[3px] border-2 border-current",
+                    opcion === "CUADRADA" ? "size-5" : "h-5 w-4",
+                  )}
+                />
+                <span>{PROPORCIONES[opcion].etiqueta}</span>
+                <span className="text-muted-foreground">
+                  {PROPORCIONES[opcion].nombre}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Instagram publica el carrusel entero con una sola proporcion, asi
+            que todos los archivos tienen que tenerla.
+          </p>
+        </div>
+      )}
+
+      {desalineados.length > 0 && estado.proporcion && (
+        <Alert variant="destructive">
+          <AlertDescription className="text-sm">
+            {desalineados.length === 1
+              ? "Hay 1 archivo que no es "
+              : "Hay " + desalineados.length + " archivos que no son "}
+            {PROPORCIONES[estado.proporcion].etiqueta}
+            {": borralos o cambia la proporcion, porque si no Instagram los " +
+              "recorta por su cuenta."}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -256,6 +324,7 @@ export function PasoMedios({
                     key={medio.id}
                     medio={medio}
                     indice={indice}
+                    proporcion={estado.proporcion}
                     onBorrar={() => void borrar(medio.id)}
                   />
                 ))}
@@ -271,10 +340,12 @@ export function PasoMedios({
 function Miniatura({
   medio,
   indice,
+  proporcion,
   onBorrar,
 }: {
   medio: MedioCargado;
   indice: number;
+  proporcion: ProporcionPost | null;
   onBorrar: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
@@ -289,7 +360,7 @@ function Miniatura({
         isDragging && "z-10 opacity-70",
       )}
     >
-      <div className="aspect-square">
+      <div className={proporcion === "VERTICAL" ? "aspect-[4/5]" : "aspect-square"}>
         {medio.tipo === "VIDEO" ? (
           <video src={medio.urlPublica} className="size-full object-cover" muted />
         ) : (

@@ -34,6 +34,7 @@ export default async function PaginaNuevaPublicacion() {
           postId: null,
           tituloInterno: "",
           tipo: null,
+    proporcion: null,
           cuentasElegidas: [],
           medios: [],
           destinos: [],

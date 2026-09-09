@@ -241,6 +241,7 @@ async function cargarContexto(postTargetId: string) {
     id: target.id,
     postId: post.id,
     tipo: post.tipo,
+    proporcion: post.proporcion,
     plataforma: target.plataforma,
     cuenta: {
       id: cuenta.id,

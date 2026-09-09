@@ -31,6 +31,7 @@ export default async function PaginaEditarPublicacion({
     postId: datos.post.id,
     tituloInterno: datos.post.tituloInterno,
     tipo: datos.post.tipo,
+    proporcion: datos.post.proporcion,
     cuentasElegidas: datos.destinos.map((d) => d.destino.socialAccountId),
     medios: datos.medios.map((m) => ({
       id: m.id,

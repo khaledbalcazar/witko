@@ -37,7 +37,11 @@ export function validarDestino(
   const problemas: ProblemaValidacion[] = [];
   const capacidades = CAPACIDADES[destino.plataforma];
 
-  for (const p of validarConjunto(media.map(comoCandidato), destino.tipo)) {
+  for (const p of validarConjunto(
+    media.map(comoCandidato),
+    destino.tipo,
+    destino.proporcion,
+  )) {
     problemas.push({ campo: "medios", mensaje: p.mensaje, nivel: "ERROR" });
   }
 
@@ -46,6 +50,7 @@ export function validarDestino(
       comoCandidato(m),
       destino.tipo,
       maxDuracionSeg,
+      destino.proporcion,
     );
     if (problema) {
       problemas.push({
