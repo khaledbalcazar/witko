@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { supabaseNavegador } from "@/lib/auth/supabase-navegador";
 import { cn } from "@/lib/utils";
 import {
   LIMITES,
@@ -121,22 +122,61 @@ export function PasoMedios({
       const clave = archivo.name + archivo.size;
       setProgreso((p) => ({ ...p, [clave]: 10 }));
 
-      const cuerpo = new FormData();
-      cuerpo.set("archivo", archivo);
-      cuerpo.set("postId", estado.postId);
-      if (dimensiones.ancho) cuerpo.set("ancho", String(dimensiones.ancho));
-      if (dimensiones.alto) cuerpo.set("alto", String(dimensiones.alto));
-      if (dimensiones.duracionMs != null) {
-        cuerpo.set("duracionMs", String(Math.round(dimensiones.duracionMs)));
-      }
+      const medidas = {
+        ancho: dimensiones.ancho,
+        alto: dimensiones.alto,
+        duracionMs:
+          dimensiones.duracionMs != null
+            ? Math.round(dimensiones.duracionMs)
+            : null,
+      };
 
       try {
-        setProgreso((p) => ({ ...p, [clave]: 50 }));
-        const respuesta = await fetch("/api/media/upload", {
+        // El archivo va directo del navegador a Storage con una URL firmada:
+        // por el servidor no puede pasar, porque Vercel corta los cuerpos de
+        // mas de 4.5 MB y cualquier video se quedaba afuera.
+        const firma = await fetch("/api/media/firma", {
           method: "POST",
-          body: cuerpo,
-        });
-        const datos = await respuesta.json();
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            postId: estado.postId,
+            nombre: archivo.name,
+            mime: archivo.type,
+            bytes: archivo.size,
+            ...medidas,
+          }),
+        }).then((r) => r.json());
+
+        if (!firma.ok) {
+          problemas.push(archivo.name + ": " + firma.mensaje);
+          continue;
+        }
+
+        setProgreso((p) => ({ ...p, [clave]: 40 }));
+
+        const subida = await supabaseNavegador()
+          .storage.from(firma.bucket)
+          .uploadToSignedUrl(firma.ruta, firma.token, archivo, {
+            contentType: archivo.type,
+          });
+
+        if (subida.error) {
+          problemas.push(archivo.name + ": " + motivoDeStorage(subida.error));
+          continue;
+        }
+
+        setProgreso((p) => ({ ...p, [clave]: 80 }));
+
+        const datos = await fetch("/api/media/registrar", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            postId: estado.postId,
+            ruta: firma.ruta,
+            nombre: archivo.name,
+            ...medidas,
+          }),
+        }).then((r) => r.json());
 
         if (!datos.ok) {
           problemas.push(archivo.name + ": " + datos.mensaje);
@@ -335,6 +375,28 @@ export function PasoMedios({
       )}
     </div>
   );
+}
+
+/**
+ * Storage contesta en ingles y con vocabulario propio. Los dos casos que le
+ * pueden pasar a un usuario tienen mensaje propio; el resto se muestra tal
+ * cual, que es mejor que un "algo salio mal".
+ */
+function motivoDeStorage(error: { message?: string }): string {
+  const texto = error.message ?? "";
+
+  if (/exceeded the maximum allowed size|payload too large/i.test(texto)) {
+    return (
+      "el archivo supera el tamano maximo que acepta el almacenamiento. " +
+      "Subilo mas liviano o pedi que suban el limite del bucket."
+    );
+  }
+
+  if (/failed to fetch|network/i.test(texto)) {
+    return "se corto la subida. Revisa la conexion y volve a intentar.";
+  }
+
+  return texto || "no se pudo subir el archivo.";
 }
 
 function Miniatura({

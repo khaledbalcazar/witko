@@ -1,4 +1,4 @@
-import { TIPOS_CON_PROPORCION, type ProporcionPost, type TipoPost } from "./tipos";
+import type { ProporcionPost, TipoPost } from "./tipos";
 
 /**
  * Limites de medios por tipo de publicacion.

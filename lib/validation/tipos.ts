@@ -24,9 +24,6 @@ export type TipoMedia = "IMAGEN" | "VIDEO";
  */
 export type ProporcionPost = "CUADRADA" | "VERTICAL";
 
-/** Tipos donde el usuario elige la proporcion. */
-export const TIPOS_CON_PROPORCION: TipoPost[] = ["IG_CARRUSEL"];
-
 export type EstadoTarget =
   | "PENDIENTE"
   | "PUBLICANDO"
