@@ -22,6 +22,30 @@ export const maxDuration = 60;
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "medios";
 
 /**
+ * Storage responde `NoSuchBucket` tanto si el bucket no existe como si la
+ * clave no tiene permiso para verlo (sin policies, un rol que no sea
+ * service_role lo ve como inexistente). Para poder distinguir un caso del otro
+ * en los logs, decimos con que rol estabamos hablando. Nunca la clave: solo el
+ * rol, que no es secreto.
+ */
+function rolDeLaClave(): string {
+  const clave = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
+
+  if (clave.startsWith("sb_secret_")) return "clave secreta nueva";
+  if (clave.startsWith("sb_publishable_")) return "clave PUBLICA (deberia ser la secreta)";
+
+  const carga = clave.split(".")[1];
+  if (!carga) return "formato desconocido";
+
+  try {
+    const { role } = JSON.parse(Buffer.from(carga, "base64url").toString());
+    return typeof role === "string" ? `JWT legacy con rol "${role}"` : "JWT legacy sin rol";
+  } catch {
+    return "formato desconocido";
+  }
+}
+
+/**
  * Supabase devuelve `NoSuchBucket` cuando el bucket todavia no existe: es el
  * error mas comun en un proyecto recien creado, porque crear el bucket es un
  * paso manual del panel (SETUP.md, seccion 3). En vez de hacer fallar cada
@@ -155,7 +179,9 @@ export async function POST(request: Request) {
   let { error } = await subir();
 
   if (error && faltaElBucket(error)) {
-    console.warn(`El bucket "${BUCKET}" no existia; intentando crearlo.`);
+    console.warn(
+      `Storage no encuentra el bucket "${BUCKET}" (${rolDeLaClave()}); intentando crearlo.`,
+    );
     const falloAlCrear = await crearBucket(supabase);
 
     if (falloAlCrear) {
@@ -164,9 +190,10 @@ export async function POST(request: Request) {
         {
           ok: false,
           mensaje:
-            `Falta el bucket "${BUCKET}" en Supabase Storage y no se pudo crear solo. ` +
-            "Crealo desde el panel (Storage > New bucket, con Public activado). " +
-            "Los pasos estan en SETUP.md, seccion 3.",
+            `Supabase no encuentra el bucket "${BUCKET}" y tampoco se pudo crear. ` +
+            "Si el bucket existe en el panel, entonces SUPABASE_SERVICE_ROLE_KEY no es " +
+            "la clave service_role de ese proyecto. Si no existe, crealo desde " +
+            "Storage > New bucket con Public activado (SETUP.md, seccion 3).",
         },
         { status: 502 },
       );
