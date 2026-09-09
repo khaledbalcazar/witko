@@ -160,8 +160,6 @@ function CaptionTruncado({
   plataforma: Plataforma;
   usuario?: string;
 }) {
-  const { visible, hayMas } = truncarComoFeed(texto, plataforma);
-
   if (!texto.trim()) {
     return (
       <p className="text-xs italic text-muted-foreground">Sin texto todavia</p>
@@ -171,9 +169,47 @@ function CaptionTruncado({
   return (
     <p className="whitespace-pre-wrap break-words text-sm">
       {usuario && <span className="mr-1 font-semibold">{usuario}</span>}
-      {visible}
-      {hayMas && <span className="text-muted-foreground"> ... mas</span>}
+      <TextoConMas
+        texto={texto}
+        plataforma={plataforma}
+        claseMas="text-muted-foreground"
+      />
     </p>
+  );
+}
+
+/**
+ * El "... mas" de las redes, pero que se puede abrir.
+ *
+ * La vista previa corta el texto como lo corta el feed, que es el punto de la
+ * pantalla; pero es tambien donde el Jefe aprueba, y aprobar un texto que no
+ * se puede terminar de leer no tiene sentido. Arranca cortado y se despliega.
+ */
+function TextoConMas({
+  texto,
+  plataforma,
+  claseMas,
+}: {
+  texto: string;
+  plataforma: Plataforma;
+  claseMas: string;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const { visible, hayMas } = truncarComoFeed(texto, plataforma);
+
+  return (
+    <>
+      {abierto ? texto : visible}
+      {hayMas && (
+        <button
+          type="button"
+          onClick={() => setAbierto(!abierto)}
+          className={cn("ml-1 hover:underline", claseMas)}
+        >
+          {abierto ? "menos" : "... mas"}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -292,12 +328,10 @@ function ReelInstagram({ datos }: { datos: DatosVistaPrevia }) {
 }
 
 function CaptionTruncadoClaro({ texto }: { texto: string }) {
-  const { visible, hayMas } = truncarComoFeed(texto, "INSTAGRAM");
   if (!texto.trim()) return <span className="italic opacity-70">Sin texto</span>;
   return (
     <span className="whitespace-pre-wrap break-words">
-      {visible}
-      {hayMas && <span className="opacity-70"> ... mas</span>}
+      <TextoConMas texto={texto} plataforma="INSTAGRAM" claseMas="opacity-70" />
     </span>
   );
 }
@@ -411,12 +445,10 @@ function VistaTiktok({ datos }: { datos: DatosVistaPrevia }) {
 }
 
 function CaptionTiktok({ texto }: { texto: string }) {
-  const { visible, hayMas } = truncarComoFeed(texto, "TIKTOK");
   if (!texto.trim()) return <span className="italic opacity-70">Sin texto</span>;
   return (
     <span className="whitespace-pre-wrap break-words">
-      {visible}
-      {hayMas && <span className="opacity-70"> ... mas</span>}
+      <TextoConMas texto={texto} plataforma="TIKTOK" claseMas="opacity-70" />
     </span>
   );
 }
