@@ -17,7 +17,9 @@ import type { TipoPost } from "@/lib/validation/tipos";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "medios";
+// `??` no alcanza: si la variable esta definida pero vacia (o con espacios),
+// Supabase recibe un nombre vacio y responde "Bucket not found".
+const BUCKET = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "medios";
 
 /**
  * Supabase devuelve `NoSuchBucket` cuando el bucket todavia no existe: es el
