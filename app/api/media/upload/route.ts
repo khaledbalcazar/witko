@@ -20,6 +20,33 @@ export const maxDuration = 60;
 const BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "medios";
 
 /**
+ * Supabase devuelve `NoSuchBucket` cuando el bucket todavia no existe: es el
+ * error mas comun en un proyecto recien creado, porque crear el bucket es un
+ * paso manual del panel (SETUP.md, seccion 3). En vez de hacer fallar cada
+ * subida hasta que alguien lea el log, lo creamos aca con service_role y
+ * reintentamos una vez.
+ */
+function faltaElBucket(error: { message?: string } | null): boolean {
+  return (error as { statusCode?: string } | null)?.statusCode === "404" ||
+    /bucket not found/i.test(error?.message ?? "");
+}
+
+async function crearBucket(
+  supabase: ReturnType<typeof supabaseAdmin>,
+): Promise<string | null> {
+  // Publico a proposito: al publicar, Meta hace un cURL al archivo desde sus
+  // servidores y una URL con autenticacion romperia la publicacion.
+  const { error } = await supabase.storage.createBucket(BUCKET, { public: true });
+
+  // Otro request pudo haberlo creado entre medio; eso no es un fallo.
+  if (error && !/already exists/i.test(error.message)) {
+    return error.message;
+  }
+
+  return null;
+}
+
+/**
  * Rate limit por usuario, en memoria del proceso.
  * Alcanza para un equipo de marketing con una sola instancia; si algun dia hay
  * varias, esto se mueve a una tabla de Postgres.
@@ -118,9 +145,33 @@ export async function POST(request: Request) {
     extension;
 
   const supabase = supabaseAdmin();
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(ruta, archivo, { contentType: archivo.type, upsert: false });
+  const subir = () =>
+    supabase.storage
+      .from(BUCKET)
+      .upload(ruta, archivo, { contentType: archivo.type, upsert: false });
+
+  let { error } = await subir();
+
+  if (error && faltaElBucket(error)) {
+    console.warn(`El bucket "${BUCKET}" no existia; intentando crearlo.`);
+    const falloAlCrear = await crearBucket(supabase);
+
+    if (falloAlCrear) {
+      console.error(`No se pudo crear el bucket "${BUCKET}":`, falloAlCrear);
+      return NextResponse.json(
+        {
+          ok: false,
+          mensaje:
+            `Falta el bucket "${BUCKET}" en Supabase Storage y no se pudo crear solo. ` +
+            "Crealo desde el panel (Storage > New bucket, con Public activado). " +
+            "Los pasos estan en SETUP.md, seccion 3.",
+        },
+        { status: 502 },
+      );
+    }
+
+    ({ error } = await subir());
+  }
 
   if (error) {
     console.error("Fallo la subida a Storage:", error);
