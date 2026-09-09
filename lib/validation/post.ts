@@ -62,6 +62,8 @@ export const destinoSchema = z.object({
   etiquetas: z.array(etiquetaMediaSchema).default([]),
 });
 
+export const proporcionSchema = z.enum(["CUADRADA", "VERTICAL"]);
+
 export const guardarPostSchema = z.object({
   tituloInterno: z
     .string()
@@ -69,6 +71,8 @@ export const guardarPostSchema = z.object({
     .min(1, "Ponele un titulo interno para reconocerla despues.")
     .max(200),
   tipo: tipoPostSchema,
+  /** Proporcion del carrusel. Null en los tipos que no la eligen. */
+  proporcion: proporcionSchema.nullable().default(null),
   /** Orden de los medios ya subidos. */
   mediaIds: z.array(z.string().uuid()).default([]),
   destinos: z.array(destinoSchema).min(1, "Elegi al menos una cuenta de destino."),

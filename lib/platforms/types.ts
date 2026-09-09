@@ -1,5 +1,6 @@
 import type {
   Plataforma,
+  ProporcionPost,
   TipoMedia,
   TipoPost,
 } from "@/lib/validation/tipos";
@@ -50,6 +51,8 @@ export interface DestinoParaPublicar {
   id: string;
   postId: string;
   tipo: TipoPost;
+  /** Proporcion elegida para el carrusel. Null si el post no eligio. */
+  proporcion: ProporcionPost | null;
   plataforma: Plataforma;
   cuenta: CuentaSocial;
   caption: string;

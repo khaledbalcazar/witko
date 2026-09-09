@@ -18,6 +18,15 @@ export type TipoPost =
 
 export type TipoMedia = "IMAGEN" | "VIDEO";
 
+/**
+ * Proporcion del carrusel de Instagram. Instagram publica todo el carrusel con
+ * una sola proporcion, asi que es una decision del post y no de cada archivo.
+ */
+export type ProporcionPost = "CUADRADA" | "VERTICAL";
+
+/** Tipos donde el usuario elige la proporcion. */
+export const TIPOS_CON_PROPORCION: TipoPost[] = ["IG_CARRUSEL"];
+
 export type EstadoTarget =
   | "PENDIENTE"
   | "PUBLICANDO"

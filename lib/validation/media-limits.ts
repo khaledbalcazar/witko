@@ -1,4 +1,4 @@
-import type { TipoPost } from "./tipos";
+import { TIPOS_CON_PROPORCION, type ProporcionPost, type TipoPost } from "./tipos";
 
 /**
  * Limites de medios por tipo de publicacion.
@@ -23,6 +23,8 @@ export interface LimitesMedia {
   /** Relacion de aspecto ancho/alto admitida. */
   minRatio: number | null;
   maxRatio: number | null;
+  /** Proporciones entre las que elige el usuario. Vacio si no elige. */
+  proporciones: ProporcionPost[];
   /** Nota que se muestra bajo el dropzone. */
   nota: string;
 }
@@ -45,6 +47,7 @@ export const LIMITES: Record<TipoPost, LimitesMedia> = {
     maxDuracionSeg: null,
     minRatio: 0.8, // 4:5 vertical
     maxRatio: 1.91, // 1.91:1 horizontal
+    proporciones: [],
     nota: "Una imagen JPG o PNG, hasta 8 MB, entre 4:5 y 1.91:1.",
   },
   IG_CARRUSEL: {
@@ -59,7 +62,10 @@ export const LIMITES: Record<TipoPost, LimitesMedia> = {
     maxDuracionSeg: 60,
     minRatio: 0.8,
     maxRatio: 1.91,
-    nota: "Entre 2 y 10 elementos. Los reels no se pueden poner en carrusel.",
+    proporciones: ["CUADRADA", "VERTICAL"],
+    nota:
+      "Entre 2 y 10 elementos, todos en 1:1 o todos en 4:5. " +
+      "Los reels no se pueden poner en carrusel.",
   },
   IG_REEL: {
     minArchivos: 1,
@@ -73,6 +79,7 @@ export const LIMITES: Record<TipoPost, LimitesMedia> = {
     maxDuracionSeg: 15 * 60,
     minRatio: 0.5, // 9:16 = 0.5625; se deja margen
     maxRatio: 0.6,
+    proporciones: [],
     nota: "Un video vertical (9:16), de 3 segundos a 15 minutos.",
   },
   IG_STORY: {
@@ -87,6 +94,7 @@ export const LIMITES: Record<TipoPost, LimitesMedia> = {
     maxDuracionSeg: 60,
     minRatio: 0.5,
     maxRatio: 0.6,
+    proporciones: [],
     nota: "Una imagen o video vertical de hasta 60 segundos. Desaparece a las 24 horas.",
   },
   FB_FEED: {
@@ -101,6 +109,7 @@ export const LIMITES: Record<TipoPost, LimitesMedia> = {
     maxDuracionSeg: 240 * 60,
     minRatio: null,
     maxRatio: null,
+    proporciones: [],
     nota: "Hasta 10 imagenes, o un video.",
   },
   FB_REEL: {
@@ -115,6 +124,7 @@ export const LIMITES: Record<TipoPost, LimitesMedia> = {
     maxDuracionSeg: 90,
     minRatio: 0.5,
     maxRatio: 0.6,
+    proporciones: [],
     nota: "Un video vertical de 3 a 90 segundos.",
   },
   TT_VIDEO: {
@@ -131,6 +141,7 @@ export const LIMITES: Record<TipoPost, LimitesMedia> = {
     maxDuracionSeg: null,
     minRatio: null,
     maxRatio: null,
+    proporciones: [],
     nota: "Un video. La duracion maxima depende de la cuenta de TikTok.",
   },
   TT_FOTO: {
@@ -145,9 +156,40 @@ export const LIMITES: Record<TipoPost, LimitesMedia> = {
     maxDuracionSeg: null,
     minRatio: null,
     maxRatio: null,
+    proporciones: [],
     nota: "Hasta 35 imagenes JPG o WEBP.",
   },
 };
+
+/**
+ * Proporciones del carrusel. Instagram publica todo el carrusel con una sola,
+ * asi que se elige una vez y todos los archivos tienen que cumplirla: si no,
+ * Instagram recorta por su cuenta y el resultado no es el que se vio al armar
+ * la publicacion.
+ */
+export const PROPORCIONES: Record<
+  ProporcionPost,
+  { ratio: number; etiqueta: string; nombre: string }
+> = {
+  CUADRADA: { ratio: 1, etiqueta: "1:1", nombre: "cuadrada" },
+  VERTICAL: { ratio: 0.8, etiqueta: "4:5", nombre: "vertical" },
+};
+
+/**
+ * Margen sobre la proporcion exacta. Un 2% deja pasar los redondeos de las
+ * exportaciones (1080x1349 en vez de 1080x1350) sin aceptar otra proporcion:
+ * 1:1 y 4:5 estan a un 20% de distancia.
+ */
+const TOLERANCIA_RATIO = 0.02;
+
+export function cumpleProporcion(
+  ancho: number,
+  alto: number,
+  proporcion: ProporcionPost,
+): boolean {
+  const objetivo = PROPORCIONES[proporcion].ratio;
+  return Math.abs(ancho / alto - objetivo) <= objetivo * TOLERANCIA_RATIO;
+}
 
 /** Fallback de duracion de TikTok mientras no haya respuesta de creator_info. */
 export const TIKTOK_DURACION_FALLBACK_SEG = 600;
@@ -188,6 +230,7 @@ export function validarArchivo(
   archivo: ArchivoCandidato,
   tipo: TipoPost,
   maxDuracionSegOverride?: number | null,
+  proporcion?: ProporcionPost | null,
 ): ProblemaMedia | null {
   const limite = LIMITES[tipo];
   const esImagen = archivo.mime.startsWith("image/");
@@ -257,7 +300,31 @@ export function validarArchivo(
     }
   }
 
-  if (archivo.ancho && archivo.alto && limite.minRatio && limite.maxRatio) {
+  const eligeProporcion =
+    proporcion != null && limite.proporciones.includes(proporcion);
+
+  // Con una proporcion elegida manda esa y no el rango: el carrusel se publica
+  // entero con una sola, y lo que no encaje lo recorta Instagram sin avisar.
+  if (eligeProporcion && archivo.ancho && archivo.alto) {
+    if (!cumpleProporcion(archivo.ancho, archivo.alto, proporcion)) {
+      const { etiqueta, nombre } = PROPORCIONES[proporcion];
+      return {
+        archivo: archivo.nombre,
+        mensaje:
+          "Mide " +
+          archivo.ancho +
+          "x" +
+          archivo.alto +
+          " y el carrusel esta en " +
+          etiqueta +
+          " (" +
+          nombre +
+          "). Recortala a " +
+          etiqueta +
+          " o cambia la proporcion del carrusel.",
+      };
+    }
+  } else if (archivo.ancho && archivo.alto && limite.minRatio && limite.maxRatio) {
     const ratio = archivo.ancho / archivo.alto;
     if (ratio < limite.minRatio || ratio > limite.maxRatio) {
       return {
@@ -282,6 +349,7 @@ export function validarArchivo(
 export function validarConjunto(
   archivos: ArchivoCandidato[],
   tipo: TipoPost,
+  proporcion?: ProporcionPost | null,
 ): ProblemaMedia[] {
   const limite = LIMITES[tipo];
   const problemas: ProblemaMedia[] = [];
@@ -308,6 +376,31 @@ export function validarConjunto(
         limite.maxArchivos +
         ".",
     });
+  }
+
+  // Un carrusel sin proporcion elegida es de los anteriores a esta funcion:
+  // sus archivos pueden no coincidir entre si, y ahi Instagram recorta todo a
+  // la proporcion del primero.
+  if (
+    limite.proporciones.length > 0 &&
+    proporcion == null &&
+    archivos.length > 1
+  ) {
+    const ratios = archivos.flatMap((a) =>
+      a.ancho && a.alto ? [a.ancho / a.alto] : [],
+    );
+    const dispares = ratios.some(
+      (r) => Math.abs(r - ratios[0]) > ratios[0] * TOLERANCIA_RATIO,
+    );
+
+    if (dispares) {
+      problemas.push({
+        archivo: "",
+        mensaje:
+          "Los archivos tienen proporciones distintas y el carrusel se publica " +
+          "con una sola: elegi 1:1 o 4:5 para que todos queden iguales.",
+      });
+    }
   }
 
   return problemas;

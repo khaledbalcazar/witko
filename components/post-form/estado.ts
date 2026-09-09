@@ -1,4 +1,4 @@
-import type { Plataforma, TipoPost } from "@/lib/validation/tipos";
+import type { Plataforma, ProporcionPost, TipoPost } from "@/lib/validation/tipos";
 
 /** Estado del formulario de carga, compartido por los cinco pasos. */
 
@@ -53,6 +53,8 @@ export interface EstadoFormulario {
   postId: string | null;
   tituloInterno: string;
   tipo: TipoPost | null;
+  /** Proporcion del carrusel. Null cuando el tipo no la elige. */
+  proporcion: ProporcionPost | null;
   cuentasElegidas: string[];
   medios: MedioCargado[];
   destinos: DestinoEnFormulario[];
