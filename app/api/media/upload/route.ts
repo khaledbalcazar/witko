@@ -180,7 +180,8 @@ export async function POST(request: Request) {
 
   if (error && faltaElBucket(error)) {
     console.warn(
-      `Storage no encuentra el bucket "${BUCKET}" (${rolDeLaClave()}); intentando crearlo.`,
+      `Storage no encuentra el bucket "${BUCKET}" en ` +
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL} (${rolDeLaClave()}); intentando crearlo.`,
     );
     const falloAlCrear = await crearBucket(supabase);
 
