@@ -151,6 +151,8 @@ export async function POST(request: Request) {
       duracionSeg: duracionMs != null ? duracionMs / 1000 : null,
     },
     post.tipo as TipoPost,
+    null,
+    post.proporcion,
   );
 
   if (problema) {

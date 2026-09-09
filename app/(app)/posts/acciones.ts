@@ -144,6 +144,7 @@ export async function guardarPost(
       .set({
         tituloInterno: contenido.tituloInterno,
         tipo: contenido.tipo,
+        proporcion: contenido.proporcion,
         scheduledAt: contenido.scheduledAt,
         updatedAt: new Date(),
       })

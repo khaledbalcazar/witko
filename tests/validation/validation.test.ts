@@ -117,6 +117,51 @@ describe("validacion del conjunto", () => {
   it("un post sin archivos se rechaza", () => {
     expect(validarConjunto([], "IG_FEED")).toHaveLength(1);
   });
+
+  it("avisa si un carrusel sin proporcion elegida mezcla proporciones", () => {
+    const p = validarConjunto(
+      [imagen(), imagen({ ancho: 1080, alto: 1350 })],
+      "IG_CARRUSEL",
+    );
+    expect(p[0].mensaje).toMatch(/proporciones distintas/);
+  });
+
+  it("no avisa si los archivos ya coinciden entre si", () => {
+    expect(validarConjunto([imagen(), imagen()], "IG_CARRUSEL")).toHaveLength(0);
+  });
+});
+
+describe("proporcion del carrusel", () => {
+  it("acepta 1080x1350 cuando el carrusel es 4:5", () => {
+    const foto = imagen({ ancho: 1080, alto: 1350 });
+    expect(validarArchivo(foto, "IG_CARRUSEL", null, "VERTICAL")).toBeNull();
+  });
+
+  it("rechaza una cuadrada cuando el carrusel es 4:5", () => {
+    const p = validarArchivo(imagen(), "IG_CARRUSEL", null, "VERTICAL");
+    expect(p?.mensaje).toMatch(/4:5/);
+  });
+
+  it("rechaza una vertical cuando el carrusel es 1:1", () => {
+    const foto = imagen({ ancho: 1080, alto: 1350 });
+    const p = validarArchivo(foto, "IG_CARRUSEL", null, "CUADRADA");
+    expect(p?.mensaje).toMatch(/1:1/);
+  });
+
+  it("tolera el redondeo de una exportacion", () => {
+    const foto = imagen({ ancho: 1080, alto: 1349 });
+    expect(validarArchivo(foto, "IG_CARRUSEL", null, "VERTICAL")).toBeNull();
+  });
+
+  it("los tipos que no eligen proporcion siguen con el rango de siempre", () => {
+    const horizontal = imagen({ ancho: 1920, alto: 1080 });
+    expect(validarArchivo(horizontal, "IG_FEED", null, "VERTICAL")).toBeNull();
+  });
+
+  it("sin proporcion elegida el carrusel acepta el rango amplio", () => {
+    const horizontal = imagen({ ancho: 1910, alto: 1000 });
+    expect(validarArchivo(horizontal, "IG_CARRUSEL")).toBeNull();
+  });
 });
 
 describe("caption", () => {

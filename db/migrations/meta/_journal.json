@@ -15,6 +15,13 @@
       "when": 1788633936935,
       "tag": "0001_tarjetas_completadas",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788957480553,
+      "tag": "0002_proporcion_carrusel",
+      "breakpoints": true
     }
   ]
 }

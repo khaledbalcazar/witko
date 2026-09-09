@@ -96,6 +96,7 @@ export function FormularioPost({
       const resultado = await guardarPost(estado.postId, {
         tituloInterno: estado.tituloInterno,
         tipo: estado.tipo,
+        proporcion: estado.proporcion,
         mediaIds: estado.medios.map((m) => m.id),
         destinos: estado.destinos,
         scheduledAt: fechaProgramada(estado, zona),

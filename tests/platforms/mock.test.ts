@@ -33,6 +33,7 @@ function destino(
     id: "destino-0001-aaaa",
     postId: "post-1",
     tipo,
+    proporcion: null,
     plataforma,
     cuenta: cuenta(plataforma),
     caption: "Verano en Paraguay",

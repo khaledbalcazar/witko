@@ -142,7 +142,14 @@ export function PasoDestinos({
                 key={tipo}
                 type="button"
                 disabled={bloqueado}
-                onClick={() => onCambio({ tipo })}
+                onClick={() =>
+                  onCambio({
+                    tipo,
+                    // El carrusel arranca en 1:1 y se cambia en el paso de
+                    // medios; los demas tipos no eligen proporcion.
+                    proporcion: LIMITES[tipo].proporciones[0] ?? null,
+                  })
+                }
                 className={cn(
                   "rounded-lg border p-3 text-left transition-colors",
                   estado.tipo === tipo
