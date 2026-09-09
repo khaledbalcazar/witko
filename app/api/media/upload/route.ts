@@ -17,7 +17,60 @@ import type { TipoPost } from "@/lib/validation/tipos";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const BUCKET = process.env.SUPABASE_STORAGE_BUCKET ?? "medios";
+// `??` no alcanza: si la variable esta definida pero vacia (o con espacios),
+// Supabase recibe un nombre vacio y responde "Bucket not found".
+const BUCKET = process.env.SUPABASE_STORAGE_BUCKET?.trim() || "medios";
+
+/**
+ * Storage responde `NoSuchBucket` tanto si el bucket no existe como si la
+ * clave no tiene permiso para verlo (sin policies, un rol que no sea
+ * service_role lo ve como inexistente). Para poder distinguir un caso del otro
+ * en los logs, decimos con que rol estabamos hablando. Nunca la clave: solo el
+ * rol, que no es secreto.
+ */
+function rolDeLaClave(): string {
+  const clave = process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "";
+
+  if (clave.startsWith("sb_secret_")) return "clave secreta nueva";
+  if (clave.startsWith("sb_publishable_")) return "clave PUBLICA (deberia ser la secreta)";
+
+  const carga = clave.split(".")[1];
+  if (!carga) return "formato desconocido";
+
+  try {
+    const { role } = JSON.parse(Buffer.from(carga, "base64url").toString());
+    return typeof role === "string" ? `JWT legacy con rol "${role}"` : "JWT legacy sin rol";
+  } catch {
+    return "formato desconocido";
+  }
+}
+
+/**
+ * Supabase devuelve `NoSuchBucket` cuando el bucket todavia no existe: es el
+ * error mas comun en un proyecto recien creado, porque crear el bucket es un
+ * paso manual del panel (SETUP.md, seccion 3). En vez de hacer fallar cada
+ * subida hasta que alguien lea el log, lo creamos aca con service_role y
+ * reintentamos una vez.
+ */
+function faltaElBucket(error: { message?: string } | null): boolean {
+  return (error as { statusCode?: string } | null)?.statusCode === "404" ||
+    /bucket not found/i.test(error?.message ?? "");
+}
+
+async function crearBucket(
+  supabase: ReturnType<typeof supabaseAdmin>,
+): Promise<string | null> {
+  // Publico a proposito: al publicar, Meta hace un cURL al archivo desde sus
+  // servidores y una URL con autenticacion romperia la publicacion.
+  const { error } = await supabase.storage.createBucket(BUCKET, { public: true });
+
+  // Otro request pudo haberlo creado entre medio; eso no es un fallo.
+  if (error && !/already exists/i.test(error.message)) {
+    return error.message;
+  }
+
+  return null;
+}
 
 /**
  * Rate limit por usuario, en memoria del proceso.
@@ -118,9 +171,37 @@ export async function POST(request: Request) {
     extension;
 
   const supabase = supabaseAdmin();
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(ruta, archivo, { contentType: archivo.type, upsert: false });
+  const subir = () =>
+    supabase.storage
+      .from(BUCKET)
+      .upload(ruta, archivo, { contentType: archivo.type, upsert: false });
+
+  let { error } = await subir();
+
+  if (error && faltaElBucket(error)) {
+    console.warn(
+      `Storage no encuentra el bucket "${BUCKET}" en ` +
+        `${process.env.NEXT_PUBLIC_SUPABASE_URL} (${rolDeLaClave()}); intentando crearlo.`,
+    );
+    const falloAlCrear = await crearBucket(supabase);
+
+    if (falloAlCrear) {
+      console.error(`No se pudo crear el bucket "${BUCKET}":`, falloAlCrear);
+      return NextResponse.json(
+        {
+          ok: false,
+          mensaje:
+            `Supabase no encuentra el bucket "${BUCKET}" y tampoco se pudo crear. ` +
+            "Si el bucket existe en el panel, entonces SUPABASE_SERVICE_ROLE_KEY no es " +
+            "la clave service_role de ese proyecto. Si no existe, crealo desde " +
+            "Storage > New bucket con Public activado (SETUP.md, seccion 3).",
+        },
+        { status: 502 },
+      );
+    }
+
+    ({ error } = await subir());
+  }
 
   if (error) {
     console.error("Fallo la subida a Storage:", error);
